@@ -36,7 +36,7 @@ public class StageInitializer implements ApplicationListener<JavaFxApplication.S
             FXMLLoader loader = new FXMLLoader(url);
             loader.setControllerFactory(applicationContext::getBean);
             Parent root = loader.load();
-            Scene scene = new Scene(root, 500, 500);
+            Scene scene = new Scene(root, 600, 400);
             stage.setScene(scene);
             stage.setTitle(appTitle);
             stage.show();

@@ -1,6 +1,8 @@
-package com.example.demo;
+package com.example.demo.firebird;
 
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.Environment;
@@ -12,11 +14,11 @@ import org.springframework.stereotype.Component;
 import java.util.Properties;
 
 @Component
-public class HibernateUtil {
+public class FirebirdConnector {
 
     private static SessionFactory sessionFactory = null;
 
-    private HibernateUtil(){
+    private FirebirdConnector(){
         this.sessionFactory = buildSessionFactory();
     }
 
@@ -46,9 +48,23 @@ public class HibernateUtil {
         return sessionFactory;
     }
 
-
     public SessionFactory getSessionFactory() {
         return sessionFactory;
     }
 
+    public Session getSession(){
+        return getSessionFactory().getCurrentSession();
+    }
+
+    private Transaction getTranaction(){
+        return getSession().getTransaction();
+    }
+
+    public void beginTransaction(){
+        getTranaction().begin();
+    }
+
+    public void commitTransaction(){
+        getTranaction().commit();
+    }
 }
