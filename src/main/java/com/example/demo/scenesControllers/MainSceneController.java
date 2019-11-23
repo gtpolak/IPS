@@ -37,6 +37,8 @@ public class MainSceneController {
 
         firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[1]));
 
+        firebirdService.getColumnNameAndTypeFromTable("test");
+
 //        Session session = hibernateUtil.getSessionFactory().getCurrentSession();
 //        session.beginTransaction();
 //        session.createSQLQuery("create table test2(" +

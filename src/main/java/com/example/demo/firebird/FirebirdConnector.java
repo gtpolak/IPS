@@ -67,4 +67,11 @@ public class FirebirdConnector {
     public void commitTransaction(){
         getTranaction().commit();
     }
+
+    public void close(){
+        commitTransaction();
+        getSession().close();
+        sessionFactory.close();
+        sessionFactory = null;
+    }
 }
