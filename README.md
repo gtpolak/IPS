@@ -1,7 +1,7 @@
 
 # Aplikacja pozwalająca na komunikację pomiędzy bazami danych.
 
-**Oprogramowanie ma posłużyć do wyświetlenia danych, ich modyfikacji, usunięciu poszczególnych fragmentów danych oraz wczytanie danych do wybranej bazy danych.**
+**Oprogramowanie ma służyć do komunikacji między dwoma silnikami bazodanowymi oraz wspierać funkcje opisane poniżej.**
 
 **Wykorzystane technologie oraz bazy danych:**
   * FireBird
@@ -10,11 +10,11 @@
   * Dane będą gromadzone w bazie na podstawie danych ze strony https://toolbox.google.com/datasetsearch
 
 **Funkcjonalności aplikacji:**
- * wczytanie danych z pliku 
- * przeglądanie dostępnych danych
- * modyfikowanie danych
- * usuwanie danych
- * kopiowanie danych pomiędzy bazami
+ * możliwość wczytania danych z pliku 
+ * możliwość przeglądania dostępnych danych
+ * możliwość modyfikowania danych
+ * możliwość usuwania danych
+ * możliwość przenoszenia danych pomiędzy bazami
 
 ## Diagramy
  
