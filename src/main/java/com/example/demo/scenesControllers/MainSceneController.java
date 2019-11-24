@@ -1,15 +1,13 @@
 package com.example.demo.scenesControllers;
 
-import com.example.demo.clickhouse.ClickHouseConnection;
+import com.example.demo.Type;
+import com.example.demo.clickhouse.ClickHouseService;
 import com.example.demo.firebird.FirebirdService;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import org.springframework.stereotype.Component;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.*;
 
 @Component
@@ -22,9 +20,11 @@ public class MainSceneController {
     public ComboBox<String> firebirdTables;
 
     //private final FireBirdConnector fireBirdConnector;
-
+    private final ClickHouseService clickHouseService;
     private final FirebirdService firebirdService;
-    public MainSceneController(FirebirdService firebirdService) {
+
+    public MainSceneController(ClickHouseService clickHouseService, FirebirdService firebirdService) {
+        this.clickHouseService = clickHouseService;
         //this.fireBirdConnector = fireBirdConnector;
         this.firebirdService = firebirdService;
     }
@@ -37,8 +37,15 @@ public class MainSceneController {
 
         firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[1]));
 
-        firebirdService.getColumnNameAndTypeFromTable("test");
+        Map<String, Type> columnNameAndType = firebirdService.getColumnNameAndTypeFromTable("test");
 
+        boolean result = firebirdService.createTable("NAZWA_TABELI", columnNameAndType);
+
+        System.out.println("=================================================");
+        System.out.println("===================ClickHouse====================");
+        System.out.println("=================================================");
+
+        clickHouseService.getAllTables().forEach(System.out::println);
 //        Session session = hibernateUtil.getSessionFactory().getCurrentSession();
 //        session.beginTransaction();
 //        session.createSQLQuery("create table test2(" +
@@ -57,23 +64,8 @@ public class MainSceneController {
 //        } catch (Exception e) {
 //            e.printStackTrace();
 //        }
-//        try {
-//
-//            Connection conn = new ClickHouseConnection().getConnection();
-//
-//            Statement stmt = conn.createStatement();
-//            String sql = "show databases";//
-//            ResultSet rs = stmt.executeQuery(sql);
-//            List<String> dbsList = new ArrayList<>();
-//            while (rs.next()) {
-//                dbsList.add(rs.getString(1));
-//                System.out.println(rs.getString(1));
-//            }
-//            conn.commit();
-//            rs.close();
-//            stmt.close();
-//            stmt = conn.createStatement();
-//            //conn.close();
+
+            //conn.close();
 //            for(int i = 1; i < dbsList.size(); i++){
 //                if(!dbsList.get(i).startsWith("default") && !dbsList.get(i).startsWith("system")) {
 //                    //conn = dataSource.getConnection();
@@ -107,9 +99,5 @@ public class MainSceneController {
 //            for(Map.Entry<String, String> entry : tableDesc.entrySet()){
 //                System.out.println(entry.getKey() + " " + entry.getValue());
 //            }
-//        }catch (Exception e){
-//            e.printStackTrace();
-//        }
-
     }
 }

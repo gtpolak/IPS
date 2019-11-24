@@ -1,17 +1,20 @@
 package com.example.demo.clickhouse;
 
+import org.springframework.stereotype.Component;
 import ru.yandex.clickhouse.ClickHouseDataSource;
 import ru.yandex.clickhouse.settings.ClickHouseProperties;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
+@Component
 public class ClickHouseConnection {
 
-    Connection connection = null;
+    private Connection connection = null;
 
     public Connection getConnection() {
         if (connection == null) {
@@ -29,5 +32,21 @@ public class ClickHouseConnection {
             }
         }
         return connection;
+    }
+
+    public void close(){
+        try {
+            connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void commit(){
+        try {
+            connection.commit();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 }
