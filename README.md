@@ -7,16 +7,14 @@
   * FireBird
   * ClickHouse
   * Język Java – główny język wykorzystany do pisania aplikacji.
-  * Docker
   * Dane będą gromadzone w bazie na podstawie danych ze strony https://toolbox.google.com/datasetsearch
 
-**Funkcjonalności:**
-  Użytkownik aplikacji, może:
- * wczytać dane z pliku 
- * przeglądać dostępne dane 
- * modyfikować dane
- * usuwać dane
- * kopiować dane pomiędzy bazami
+**Funkcjonalności aplikacji:**
+ * wczytanie danych z pliku 
+ * przeglądanie dostępnych danych
+ * modyfikowanie danych
+ * usuwanie danych
+ * kopiowanie danych pomiędzy bazami
 
 ## Diagramy
  
