@@ -5,6 +5,7 @@ import org.hibernate.Session;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 public class FirebirdService {
@@ -23,7 +24,7 @@ public class FirebirdService {
                 "from rdb$relations\n" +
                 "where rdb$view_blr is null\n" +
                 "and (rdb$system_flag is null or rdb$system_flag = 0)").list();
-        tabsNames.addAll(resultList);
+        tabsNames = resultList.stream().map(s -> s.replaceAll(" ", "")).collect(Collectors.toSet());
         fireBirdConnector.commitTransaction();
         return tabsNames;
     }

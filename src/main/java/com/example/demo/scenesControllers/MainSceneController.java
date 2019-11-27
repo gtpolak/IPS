@@ -4,10 +4,10 @@ import com.example.demo.Type;
 import com.example.demo.clickhouse.ClickHouseService;
 import com.example.demo.firebird.FirebirdService;
 import javafx.fxml.FXML;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
+import javafx.scene.control.*;
 import org.springframework.stereotype.Component;
 
+import java.sql.SQLException;
 import java.util.*;
 
 @Component
@@ -15,7 +15,8 @@ public class MainSceneController {
 
     @FXML
     public Button button;
-
+    @FXML
+    public Label firebirdNotifications;
     @FXML
     public ComboBox<String> firebirdTables;
 
@@ -30,22 +31,60 @@ public class MainSceneController {
     }
 
     @FXML
-    public void initialize(){
-        button.setOnAction( actionEvent -> System.out.println("Kliknięte"));
+    public void copytoClickHouse() {
+        String tableNameToCopy = firebirdTables.getSelectionModel().getSelectedItem();
+        if (tableNameToCopy == null) {
+            firebirdNotifications.setText("Nie wybrałeś tabeli");
+            return;
+        }
 
-        Set<String> firebirdTabsNames = firebirdService.getTablesName();
+        if (clickHouseService.getAllTables().stream().anyMatch(s -> s.equals(tableNameToCopy))) {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Tabela o danej nazwie już istnieje");
+            alert.setHeaderText("Tabela o danej nazwie już istnieje");
+            alert.setContentText("Usunąć ją?");
 
-        firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[1]));
+            Optional<ButtonType> result = alert.showAndWait();
+            if (result.isPresent() && result.get() == ButtonType.OK) {
+                try {
+                    clickHouseService.deleteTable(tableNameToCopy);
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                    firebirdNotifications.setText("Błąd podczas usuwania tabeli");
+                }
+            } else {
+                firebirdNotifications.setText("Anulowano");
+                return;
+            }
+        }
+
+        if (clickHouseService.createTable(tableNameToCopy, firebirdService.getColumnNameAndTypeFromTable(tableNameToCopy))) {
+
+        } else {
+            firebirdNotifications.setText("Błąd podczas tworzenia tabeli w clickHouse");
+        }
+
 
         Map<String, Type> columnNameAndType = firebirdService.getColumnNameAndTypeFromTable("test");
 
-        boolean result = firebirdService.createTable("NAZWA_TABELI", columnNameAndType);
+
+    }
+
+    @FXML
+    public void initialize() {
+        //button.setOnAction( actionEvent -> System.out.println("Kliknięte"));
+
+        Set<String> firebirdTabsNames = firebirdService.getTablesName();
+
+        firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[0]));
+
+        //boolean result = firebirdService.createTable("NAZWA_TABELI", columnNameAndType);
 
         System.out.println("=================================================");
         System.out.println("===================ClickHouse====================");
         System.out.println("=================================================");
 
-        clickHouseService.getAllTables().forEach(System.out::println);
+        //clickHouseService.getAllTables().forEach(System.out::println);
 //        Session session = hibernateUtil.getSessionFactory().getCurrentSession();
 //        session.beginTransaction();
 //        session.createSQLQuery("create table test2(" +
@@ -65,7 +104,7 @@ public class MainSceneController {
 //            e.printStackTrace();
 //        }
 
-            //conn.close();
+        //conn.close();
 //            for(int i = 1; i < dbsList.size(); i++){
 //                if(!dbsList.get(i).startsWith("default") && !dbsList.get(i).startsWith("system")) {
 //                    //conn = dataSource.getConnection();
