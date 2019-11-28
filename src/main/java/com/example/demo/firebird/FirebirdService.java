@@ -2,6 +2,7 @@ package com.example.demo.firebird;
 
 import com.example.demo.Type;
 import org.hibernate.Session;
+import org.hibernate.hql.internal.ast.SqlASTFactory;
 import org.springframework.stereotype.Component;
 
 import java.sql.ResultSet;
@@ -157,5 +158,34 @@ public class FirebirdService {
             return false;
         }
         //return true;
+    }
+
+    public int getRowsCount(String tableName) {
+        Statement statement = fireBirdConnector.createStatement();
+        try {
+            statement.closeOnCompletion();
+            ResultSet resultSet = statement.executeQuery("select count(*) from " + tableName);
+            resultSet.next();
+            return Integer.parseInt(resultSet.getString(1));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return 0;
+    }
+
+    public List<List<String>> getDataForBatchInsert(String tableName, int sizeOfBatch, int copiedRows, int numberOfCols) throws SQLException {
+        List<List<String>> result = new ArrayList<>();
+        Statement statement = fireBirdConnector.createStatement();
+        statement.closeOnCompletion();
+        String query = "select * from " + tableName + " rows " + (copiedRows) + " to " + (copiedRows + sizeOfBatch - 1);
+        ResultSet resultSet = statement.executeQuery(query);
+        while(resultSet.next()){
+            List<String> row = new ArrayList<>();
+            for(int i = 1; i <= numberOfCols; i++){
+                row.add(resultSet.getString(i));
+            }
+            result.add(row);
+        }
+        return result;
     }
 }

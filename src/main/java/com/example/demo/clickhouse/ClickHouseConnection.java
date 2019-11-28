@@ -26,7 +26,8 @@ public class ClickHouseConnection {
                 properties.setUser("default");
                 properties.setPassword("");
                 ClickHouseDataSource dataSource = new ClickHouseDataSource(jdbcConfig + "", properties);
-                return dataSource.getConnection();
+                connection = dataSource.getConnection();
+                connection.setAutoCommit(true);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -34,17 +35,13 @@ public class ClickHouseConnection {
         return connection;
     }
 
-    public void close(){
-        try {
-            connection.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+    public Statement getStatement() throws SQLException {
+        return getConnection().createStatement();
     }
 
-    public void commit(){
+    public void close() {
         try {
-            connection.commit();
+            connection.close();
         } catch (SQLException e) {
             e.printStackTrace();
         }

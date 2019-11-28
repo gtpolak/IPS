@@ -9,6 +9,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 
 @Component
 public class ClickHouseService {
@@ -168,5 +170,35 @@ public class ClickHouseService {
             }
         }
         return columnNameAndType;
+    }
+
+    public boolean insertBatchData(String tableName, int numberOfCols, List<String> data) throws SQLException {
+        final String[] query = {"insert into " + tableName + " values ("};
+        AtomicInteger i = new AtomicInteger(1);
+        data.forEach(value -> {
+            if(isNumeric(value)){
+               query[0] += value;
+            } else {
+                query[0] += "'" + value + "'";
+            }
+            if(i.get() == data.size()){
+                query[0] += ")";
+            } else {
+                query[0] += ", ";
+            }
+            i.getAndIncrement();
+        });
+        Statement statement = clickHouseConnection.getStatement();
+        statement.closeOnCompletion();
+        return statement.execute(query[0]);
+    }
+
+    public boolean isNumeric(String strNum) {
+        Pattern pattern = Pattern.compile("-?\\d+(\\.\\d+)?");
+
+        if (strNum == null) {
+            return false;
+        }
+        return pattern.matcher(strNum).matches();
     }
 }

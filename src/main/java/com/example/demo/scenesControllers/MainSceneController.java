@@ -17,6 +17,7 @@ public class MainSceneController {
     @FXML public Label firebirdNotifications;
     @FXML public ComboBox<String> firebirdTables;
     @FXML public TextField firebirdSizeOfBatch;
+    @FXML public TextArea logArea;
 
     //private final FireBirdConnector fireBirdConnector;
     private final ClickHouseService clickHouseService;
@@ -30,13 +31,14 @@ public class MainSceneController {
 
     @FXML
     public void copyToClickHouse() {
-        String tableNameToCopy = firebirdTables.getSelectionModel().getSelectedItem();
-        if (tableNameToCopy == null) {
+        firebirdSizeOfBatch.setText("2");
+        String tableName = firebirdTables.getSelectionModel().getSelectedItem();
+        if (tableName == null) {
             firebirdNotifications.setText("Nie wybrałeś tabeli");
             return;
         }
 
-        if (clickHouseService.getAllTables().stream().anyMatch(s -> s.equals(tableNameToCopy))) {
+        if (clickHouseService.getAllTables().stream().anyMatch(s -> s.equals(tableName))) {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
             alert.setTitle("Tabela o danej nazwie już istnieje");
             alert.setHeaderText("Tabela o danej nazwie już istnieje");
@@ -45,7 +47,7 @@ public class MainSceneController {
             Optional<ButtonType> result = alert.showAndWait();
             if (result.isPresent() && result.get() == ButtonType.OK) {
                 try {
-                    clickHouseService.deleteTable(tableNameToCopy);
+                    clickHouseService.deleteTable(tableName);
                 } catch (SQLException e) {
                     e.printStackTrace();
                     firebirdNotifications.setText("Błąd podczas usuwania tabeli");
@@ -55,26 +57,55 @@ public class MainSceneController {
                 return;
             }
         }
+        int sizeOfBatch;
+        if (clickHouseService.createTable(tableName, firebirdService.getColumnNameAndTypeFromTable(tableName))) {
 
-        if (clickHouseService.createTable(tableNameToCopy, firebirdService.getColumnNameAndTypeFromTable(tableNameToCopy))) {
-            int sizeOfBatch;
             try {
                 sizeOfBatch = Integer.parseInt(firebirdSizeOfBatch.getText());
             } catch (NumberFormatException e){
-                e.printStackTrace();
+                //e.printStackTrace();
                 firebirdNotifications.setText("Zły format rozmiaru paczek");
                 return;
             }
         } else {
             firebirdNotifications.setText("Błąd podczas tworzenia tabeli w clickHouse");
+            return;
         }
+        int numberOfCols = firebirdService.getColumnNameAndTypeFromTable(tableName).size();
+        int numberOfRows = firebirdService.getRowsCount(tableName);
 
+        if(numberOfRows == 0){
+            firebirdNotifications.setText("Tabela jest pusta");
+            return;
+        }
+        int copiedRows = 1;
+        while(copiedRows <= numberOfRows+1){
+            try {
+                List<List<String>> listOfData;
+                if(copiedRows + sizeOfBatch > numberOfRows){
+                    listOfData = firebirdService.getDataForBatchInsert(tableName, numberOfRows-copiedRows+1, copiedRows, numberOfCols);
+                } else {
+                    listOfData = firebirdService.getDataForBatchInsert(tableName, sizeOfBatch, copiedRows, numberOfCols);
+                }
+                listOfData.forEach(data -> {
+                    try {
+                        clickHouseService.insertBatchData(tableName, numberOfCols, data);
+                    } catch (SQLException e) {
+                        logArea.setText("Błąd podczas wstawiania danych");
+                        return;
+                    }
+                });
+            } catch (SQLException e){
+                e.printStackTrace();
+                firebirdNotifications.setText("Błąd podczas kopiowania danych");
+                return;
+            }
+            copiedRows += sizeOfBatch;
+        }
     }
 
     @FXML
     public void initialize() {
-        //button.setOnAction( actionEvent -> System.out.println("Kliknięte"));
-
         Set<String> firebirdTabsNames = firebirdService.getTablesName();
 
         firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[0]));
