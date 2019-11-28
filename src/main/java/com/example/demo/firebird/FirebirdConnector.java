@@ -3,75 +3,71 @@ package com.example.demo.firebird;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.Transaction;
-import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
-import org.hibernate.cfg.Configuration;
-import org.hibernate.cfg.Environment;
 
 
-import org.hibernate.service.ServiceRegistry;
 import org.springframework.stereotype.Component;
 
-import java.util.Properties;
+import java.sql.*;
 
 @Component
 public class FirebirdConnector {
 
-    private static SessionFactory sessionFactory = null;
+    private Connection connection = null;
 
     private FirebirdConnector(){
-        this.sessionFactory = buildSessionFactory();
+
     }
 
-    private synchronized static SessionFactory buildSessionFactory() {
-        if(sessionFactory == null){
+    private Connection getConnection() {
+        if(connection == null){
             try{
-                Configuration configuration = new Configuration();
+//                Configuration configuration = new Configuration();
+//
+//
+//
+//                Properties properties = new Properties();
+//                properties.setProperty(Environment.DRIVER, "org.firebirdsql.jdbc.FBDriver");
+//                properties.setProperty(Environment.URL, "jdbc:firebirdsql://127.0.0.1:3050/G:\\Firebird_3_0\\databases\\database.FDB");
+//                properties.setProperty(Environment.USER, "SYSDBA");
+//                properties.setProperty(Environment.PASS, "password");
+//                properties.setProperty(Environment.DIALECT, "org.hibernate.dialect.FirebirdDialect");
+//                properties.setProperty(Environment.CURRENT_SESSION_CONTEXT_CLASS, "org.hibernate.context.internal.ThreadLocalSessionContext");
+//
+//                configuration.setProperties(properties);
+//
+//                ServiceRegistry serviceRegistry = new StandardServiceRegistryBuilder()
+//                        .applySettings(configuration.getProperties()).build();
 
-                Properties properties = new Properties();
-                properties.setProperty(Environment.DRIVER, "org.firebirdsql.jdbc.FBDriver");
-                properties.setProperty(Environment.URL, "jdbc:firebirdsql://127.0.0.1:3050/G:\\Firebird_3_0\\databases\\database.FDB");
-                properties.setProperty(Environment.USER, "SYSDBA");
-                properties.setProperty(Environment.PASS, "password");
-                properties.setProperty(Environment.DIALECT, "org.hibernate.dialect.FirebirdDialect");
-                properties.setProperty(Environment.CURRENT_SESSION_CONTEXT_CLASS, "org.hibernate.context.internal.ThreadLocalSessionContext");
+                Class.forName("org.firebirdsql.jdbc.FBDriver");
+                connection = DriverManager.getConnection("jdbc:firebirdsql://127.0.0.1:3050/G:\\Firebird_3_0\\databases\\database.FDB", "SYSDBA", "password");
+                connection.setAutoCommit(true);
 
-                configuration.setProperties(properties);
 
-                ServiceRegistry serviceRegistry = new StandardServiceRegistryBuilder()
-                        .applySettings(configuration.getProperties()).build();
-
-                sessionFactory = configuration.buildSessionFactory(serviceRegistry);
+                //sessionFactory = configuration.buildSessionFactory(serviceRegistry);
             } catch (Exception e){
                 e.printStackTrace();
             }
         }
-        return sessionFactory;
+        return connection;
     }
 
-    public SessionFactory getSessionFactory() {
-        return sessionFactory;
-    }
-
-    public Session getSession(){
-        return getSessionFactory().getCurrentSession();
-    }
-
-    private Transaction getTranaction(){
-        return getSession().getTransaction();
-    }
-
-    public void beginTransaction(){
-        getTranaction().begin();
-    }
-
-    public void commitTransaction(){
-        getTranaction().commit();
+    public Statement createStatement(){
+        Statement statement = null;
+        try {
+            statement = getConnection().createStatement();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return statement;
     }
 
     public void close(){
-        commitTransaction();
-        getSession().close();
-        sessionFactory.close();
-        sessionFactory = null;
+        try {
+            connection.close();
+            connection = null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
     }
 }

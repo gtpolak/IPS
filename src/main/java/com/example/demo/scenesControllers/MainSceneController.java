@@ -13,12 +13,10 @@ import java.util.*;
 @Component
 public class MainSceneController {
 
-    @FXML
-    public Button button;
-    @FXML
-    public Label firebirdNotifications;
-    @FXML
-    public ComboBox<String> firebirdTables;
+    @FXML public Button button;
+    @FXML public Label firebirdNotifications;
+    @FXML public ComboBox<String> firebirdTables;
+    @FXML public TextField firebirdSizeOfBatch;
 
     //private final FireBirdConnector fireBirdConnector;
     private final ClickHouseService clickHouseService;
@@ -31,7 +29,7 @@ public class MainSceneController {
     }
 
     @FXML
-    public void copytoClickHouse() {
+    public void copyToClickHouse() {
         String tableNameToCopy = firebirdTables.getSelectionModel().getSelectedItem();
         if (tableNameToCopy == null) {
             firebirdNotifications.setText("Nie wybrałeś tabeli");
@@ -59,14 +57,17 @@ public class MainSceneController {
         }
 
         if (clickHouseService.createTable(tableNameToCopy, firebirdService.getColumnNameAndTypeFromTable(tableNameToCopy))) {
-
+            int sizeOfBatch;
+            try {
+                sizeOfBatch = Integer.parseInt(firebirdSizeOfBatch.getText());
+            } catch (NumberFormatException e){
+                e.printStackTrace();
+                firebirdNotifications.setText("Zły format rozmiaru paczek");
+                return;
+            }
         } else {
             firebirdNotifications.setText("Błąd podczas tworzenia tabeli w clickHouse");
         }
-
-
-        Map<String, Type> columnNameAndType = firebirdService.getColumnNameAndTypeFromTable("test");
-
 
     }
 

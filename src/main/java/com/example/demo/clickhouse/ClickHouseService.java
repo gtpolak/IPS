@@ -56,7 +56,7 @@ public class ClickHouseService {
             columnNameAndType = convertToClickHouseTypes(columnNameAndType);
 
             String sql = prepareCreateTableStatement(tableName, columnNameAndType);
-
+            System.out.println(sql);
             Connection connection = clickHouseConnection.getConnection();
 
             Statement statement = connection.createStatement();
@@ -121,7 +121,7 @@ public class ClickHouseService {
             throw new IllegalArgumentException("Nie wybrano pola daty");
         }
 
-        sql += " ENGINE = MergeTree(" + date.get() + ", (" + id.get() + ", " + date.get() + " ), 8192)";
+        sql += " ENGINE = MergeTree(" + date.get() + ", (" + id.get() + ", " + date.get() + "), 8192)";
 
 
         return sql;
