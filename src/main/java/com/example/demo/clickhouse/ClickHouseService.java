@@ -1,6 +1,6 @@
 package com.example.demo.clickhouse;
 
-import com.example.demo.Type;
+import com.example.demo.models.Type;
 import javafx.scene.control.ChoiceDialog;
 import org.springframework.stereotype.Component;
 

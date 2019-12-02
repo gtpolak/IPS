@@ -1,10 +1,10 @@
 package com.example.demo;
 
+import com.example.demo.scenesControllers.MainSceneController;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
-import javafx.util.Callback;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
@@ -37,6 +37,8 @@ public class StageInitializer implements ApplicationListener<JavaFxApplication.S
             loader.setControllerFactory(applicationContext::getBean);
             Parent root = loader.load();
             Scene scene = new Scene(root, 600, 550);
+            MainSceneController controller = loader.getController();
+            controller.setStage(stage);
             stage.setScene(scene);
             stage.setTitle(appTitle);
             stage.show();

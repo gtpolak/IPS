@@ -1,15 +1,15 @@
 package com.example.demo.firebird;
 
-import com.example.demo.Type;
-import org.hibernate.Session;
-import org.hibernate.hql.internal.ast.SqlASTFactory;
+import com.example.demo.models.Type;
+import javafx.scene.control.ChoiceDialog;
+import javafx.scene.control.TextInputDialog;
 import org.springframework.stereotype.Component;
 
+import java.io.*;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Component
 public class FirebirdService {
@@ -75,7 +75,7 @@ public class FirebirdService {
             statement.closeOnCompletion();
             ResultSet resultSet = statement.executeQuery(query);
             while (resultSet.next()) {
-                columnsNameAntTypes.put(resultSet.getString(1).replaceAll(" ", ""), new Type(convertToType(resultSet.getString(2)), resultSet.getString(3)));
+                columnsNameAntTypes.put(resultSet.getString(1).replaceAll(" ", ""), new Type(convertToType(resultSet.getString(2)), Integer.valueOf(resultSet.getString(3))));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -187,5 +187,88 @@ public class FirebirdService {
             result.add(row);
         }
         return result;
+    }
+
+    public boolean importCsv(File file) throws FileNotFoundException, IOException {
+        FileReader fileReader = new FileReader(file);
+        BufferedReader bufferedReader = new BufferedReader(fileReader);
+        String line = "";
+        String tableName;
+
+        boolean firstLine = true;
+        while((line = bufferedReader.readLine()) != null){
+            String[] separated = line.split(";");
+            if(firstLine){
+                TextInputDialog dialog = new TextInputDialog();
+                dialog.setTitle("Podaj nazwe dla tabeli");
+                dialog.setHeaderText("Tworzenie nowej tabeli");
+                dialog.setContentText("Podaj nazwe dla tabeli");
+                Optional<String> result = dialog.showAndWait();
+                if(result.isPresent()){
+                    tableName = result.get();
+                } else {
+                    throw new IllegalArgumentException("Nie podano nazwy");
+                }
+                String[] columnsName = separated;
+                columnsName = prepColsName(columnsName);
+                Map<String, Type> map = new LinkedHashMap<>();
+                for(int i = 1; i < columnsName.length; i++){
+                    map.put(columnsName[i], getType(columnsName[i]));
+                }
+                for(Map.Entry<String, Type> entry : map.entrySet()){
+                    System.out.println(entry.getKey() + " " + entry.getValue().getTypeName() + " " + entry.getValue().getTypeSize());
+                }
+            }
+
+
+            
+
+
+
+            firstLine = false;
+        }
+        return false;
+    }
+
+    private Type getType(String columnName) {
+        List types = new ArrayList<>(Arrays.asList("SMALLINT",
+                "INTEGER",
+                "FLOAT",
+                "DATE",
+                "TIME",
+                "CHAR",
+                "BIGINT",
+                "DOUBLE",
+                "TIMESTAMP",
+                "VARCHAR",
+                "BLOB"));
+        ChoiceDialog<String> choiceDialog = new ChoiceDialog<>("VARCHAR", types);
+        choiceDialog.setContentText("Wybierz typ danych dla kolumny " + columnName);
+        choiceDialog.setHeaderText("Wybierz typ");
+        choiceDialog.setTitle("Wybierz typ");
+        Optional<String> typeResult = choiceDialog.showAndWait();
+        if(typeResult.isPresent()){
+            if (typeResult.get().equals("VARCHAR") || typeResult.get().equals("CHAR")){
+                TextInputDialog sizeDialog = new TextInputDialog();
+                sizeDialog.setTitle("Podaj rozmiar");
+                sizeDialog.setContentText("Podaj rozmiar");
+                Optional<String> sizeResult = sizeDialog.showAndWait();
+                if(sizeResult.isPresent()){
+                    return new Type(typeResult.get(), Integer.valueOf(sizeResult.get()));
+                } else {
+                    throw new IllegalArgumentException("Nie podane rozmiary dla typu");
+                }
+            }
+            return new Type(typeResult.get());
+        } else {
+            throw new IllegalArgumentException("Nie wybrano typu");
+        }
+    }
+
+    private String[] prepColsName(String[] columnsName) {
+        for(int i = 0; i < columnsName.length; i++){
+            columnsName[i] = columnsName[i].replaceAll(" ", "");
+        }
+        return columnsName;
     }
 }

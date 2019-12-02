@@ -1,13 +1,18 @@
-package com.example.demo;
+package com.example.demo.models;
 
 public class Type {
 
     private String typeName;
-    private String typeSize;
+    private Integer typeSize;
 
-    public Type(String typeName, String typeSize) {
+    public Type(String typeName, Integer typeSize) {
         this.typeName = typeName;
         this.typeSize = typeSize;
+    }
+
+    public Type(String typeName) {
+        this.typeName = typeName;
+        this.typeSize = null;
     }
 
     public String getTypeName() {
@@ -18,11 +23,11 @@ public class Type {
         this.typeName = typeName;
     }
 
-    public String getTypeSize() {
+    public Integer getTypeSize() {
         return typeSize;
     }
 
-    public void setTypeSize(String typeSize) {
+    public void setTypeSize(Integer typeSize) {
         this.typeSize = typeSize;
     }
 }

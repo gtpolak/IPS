@@ -1,12 +1,14 @@
 package com.example.demo.scenesControllers;
 
-import com.example.demo.Type;
 import com.example.demo.clickhouse.ClickHouseService;
 import com.example.demo.firebird.FirebirdService;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.sql.SQLException;
 import java.util.*;
 
@@ -18,14 +20,14 @@ public class MainSceneController {
     @FXML public ComboBox<String> firebirdTables;
     @FXML public TextField firebirdSizeOfBatch;
     @FXML public TextArea logArea;
+    @FXML public Button firebirdCSVButton;
 
-    //private final FireBirdConnector fireBirdConnector;
     private final ClickHouseService clickHouseService;
     private final FirebirdService firebirdService;
+    private Stage stage;
 
     public MainSceneController(ClickHouseService clickHouseService, FirebirdService firebirdService) {
         this.clickHouseService = clickHouseService;
-        //this.fireBirdConnector = fireBirdConnector;
         this.firebirdService = firebirdService;
     }
 
@@ -106,69 +108,23 @@ public class MainSceneController {
 
     @FXML
     public void initialize() {
+        firebirdCSVButton.setOnAction(event -> {
+            FileChooser.ExtensionFilter extensionFilter = new FileChooser.ExtensionFilter("CSV File (*.csv)", "*.csv");
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Wybierz plik .csv");
+            fileChooser.getExtensionFilters().add(extensionFilter);
+            try {
+                firebirdService.importCsv(fileChooser.showOpenDialog(stage));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
         Set<String> firebirdTabsNames = firebirdService.getTablesName();
 
         firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[0]));
+    }
 
-        //boolean result = firebirdService.createTable("NAZWA_TABELI", columnNameAndType);
-
-        System.out.println("=================================================");
-        System.out.println("===================ClickHouse====================");
-        System.out.println("=================================================");
-
-        //clickHouseService.getAllTables().forEach(System.out::println);
-//        Session session = hibernateUtil.getSessionFactory().getCurrentSession();
-//        session.beginTransaction();
-//        session.createSQLQuery("create table test2(" +
-//                "id int not null primary key," +
-//                "name varchar(20));").executeUpdate();
-//        session.getTransaction().commit();
-//        session.close();
-
-//        List<Object[]> rows = new ArrayList<>();
-//        rows.add(new Object[]{12, LocalDate.now()});
-//
-//        try {
-//            ClickHouseClient clickHouseClient = new ClickHouseClient("http://localhost:8123", "default", "");
-//
-//            clickHouseClient.get("select * from test.test", Test.class).thenAccept(stringClickHouseResponse -> stringClickHouseResponse.data.forEach(test -> System.out.println(test.getId() + " " + test.getCos().toString())));
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-
-        //conn.close();
-//            for(int i = 1; i < dbsList.size(); i++){
-//                if(!dbsList.get(i).startsWith("default") && !dbsList.get(i).startsWith("system")) {
-//                    //conn = dataSource.getConnection();
-//                    stmt = conn.createStatement();
-//                    System.out.println(dbsList.get(i));
-//                    ResultSet resultSet = stmt.executeQuery("select count(*) from " + dbsList.get(i));
-//                    resultSet.next();
-//                    System.out.println(resultSet.getInt(1));
-//                    ;
-//                    conn.commit();
-//                    rs.close();
-//                    stmt.close();
-//                    //conn.close();
-//                }
-//            }
-//            Map<String, String> tableDesc = new LinkedHashMap<>();
-//            for(int i = 1; i < dbsList.size(); i++){
-//                if(!dbsList.get(i).startsWith("default") && !dbsList.get(i).startsWith("system")) {
-//                    //conn = dataSource.getConnection();
-//                    stmt = conn.createStatement();
-//                    System.out.println(dbsList.get(i));
-//                    ResultSet resultSet = stmt.executeQuery("desc " + dbsList.get(i));
-//                    while(resultSet.next()){
-//                        tableDesc.put(resultSet.getString(1), resultSet.getString(2));
-//                    }
-//                    conn.commit();
-//                    rs.close();
-//                    stmt.close();
-//                }
-//            }
-//            for(Map.Entry<String, String> entry : tableDesc.entrySet()){
-//                System.out.println(entry.getKey() + " " + entry.getValue());
-//            }
+    public void setStage(Stage stage){
+        this.stage = stage;
     }
 }
