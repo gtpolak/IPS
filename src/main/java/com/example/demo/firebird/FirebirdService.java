@@ -2,6 +2,7 @@ package com.example.demo.firebird;
 
 import com.example.demo.models.Type;
 import javafx.scene.control.ChoiceDialog;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
 import org.springframework.stereotype.Component;
 
@@ -9,7 +10,9 @@ import java.io.*;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Component
 public class FirebirdService {
@@ -147,12 +150,6 @@ public class FirebirdService {
             Statement statement = fireBirdConnector.createStatement();
             statement.closeOnCompletion();
             return statement.execute(sql);
-//            System.out.println(sql);
-//            Session session = fireBirdConnector.getSessionFactory().getCurrentSession();
-//            session.beginTransaction();
-//            session.createNativeQuery(sql).executeUpdate();
-//            session.getTransaction().commit();
-//            session.close();
         } catch (Exception e) {
             e.printStackTrace();
             return false;
@@ -179,9 +176,9 @@ public class FirebirdService {
         statement.closeOnCompletion();
         String query = "select * from " + tableName + " rows " + (copiedRows) + " to " + (copiedRows + sizeOfBatch - 1);
         ResultSet resultSet = statement.executeQuery(query);
-        while(resultSet.next()){
+        while (resultSet.next()) {
             List<String> row = new ArrayList<>();
-            for(int i = 1; i <= numberOfCols; i++){
+            for (int i = 1; i <= numberOfCols; i++) {
                 row.add(resultSet.getString(i));
             }
             result.add(row);
@@ -189,45 +186,94 @@ public class FirebirdService {
         return result;
     }
 
-    public boolean importCsv(File file) throws FileNotFoundException, IOException {
+    public void importCsv(File file, TextArea logArea) throws FileNotFoundException, IOException, SQLException {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
         String line = "";
-        String tableName;
-
+        String tableName = null;
+        int connReset = 1;
         boolean firstLine = true;
-        while((line = bufferedReader.readLine()) != null){
+        Map<String, Type> map = new LinkedHashMap<>();
+        while ((line = bufferedReader.readLine()) != null) {
             String[] separated = line.split(";");
-            if(firstLine){
+            if (firstLine) {
                 TextInputDialog dialog = new TextInputDialog();
                 dialog.setTitle("Podaj nazwe dla tabeli");
                 dialog.setHeaderText("Tworzenie nowej tabeli");
                 dialog.setContentText("Podaj nazwe dla tabeli");
                 Optional<String> result = dialog.showAndWait();
-                if(result.isPresent()){
+                if (result.isPresent()) {
                     tableName = result.get();
                 } else {
                     throw new IllegalArgumentException("Nie podano nazwy");
                 }
                 String[] columnsName = separated;
                 columnsName = prepColsName(columnsName);
-                Map<String, Type> map = new LinkedHashMap<>();
-                for(int i = 1; i < columnsName.length; i++){
+                for (int i = 0; i < columnsName.length; i++) {
                     map.put(columnsName[i], getType(columnsName[i]));
                 }
-                for(Map.Entry<String, Type> entry : map.entrySet()){
-                    System.out.println(entry.getKey() + " " + entry.getValue().getTypeName() + " " + entry.getValue().getTypeSize());
+
+                String query = prepareCreateTableStatement(tableName, map);
+
+                System.out.println(query);
+
+                Statement statement = fireBirdConnector.createStatement();
+                statement.closeOnCompletion();
+                statement.execute(query);
+
+                firstLine = false;
+                logArea.appendText(LocalDate.now().toString() + " - Utworzono tabelę " + tableName +"\n");
+                logArea.appendText(LocalDate.now().toString() + " - rozpoczęto importowanie\n");
+                continue;
+            }
+            String query = "insert into " + tableName + " values (";
+            for(int i = 0; i < separated.length; i++){
+                if(separated[i].equals("") || separated[i] == null){
+                    query += "null";
+                } else if(isNumeric(separated[i])){
+                    query += separated[i];
+                } else {
+                    if(separated[i].contains("'")){
+                        separated[i] = separated[i].replaceAll("'", "''");
+                    }
+                    query += "'" + separated[i] + "'";
+                }
+                if(i != separated.length-1){
+                    query += ", ";
+                } else {
+                    query += ")";
                 }
             }
-
-
-            
-
-
-
-            firstLine = false;
+            Statement statement = fireBirdConnector.createStatement();
+            statement.closeOnCompletion();
+            statement.execute(query);
+            fireBirdConnector.close();
         }
-        return false;
+        logArea.appendText(LocalDate.now().toString() + " - zakończono importowanie\n");
+    }
+
+    private String prepareCreateTableStatement(String tableName, Map<String, Type> map) {
+        String query = "create table " + tableName + "(\n";
+
+        int i = 1;
+        for (Map.Entry<String, Type> entry : map.entrySet()) {
+            if (i != map.size()) {
+                query += entry.getKey() + " " + entry.getValue().getTypeName();
+                if (entry.getValue().getTypeSize() != null) {
+                    query += "(" + entry.getValue().getTypeSize() + ")";
+                }
+                query += ",\n";
+            } else {
+                query += entry.getKey() + " " + entry.getValue().getTypeName();
+                if (entry.getValue().getTypeSize() != null) {
+                    query += "(" + entry.getValue().getTypeSize() + ")\n";
+                }
+                query += "\n";
+            }
+            i++;
+        }
+        query += ");";
+        return query;
     }
 
     private Type getType(String columnName) {
@@ -238,7 +284,7 @@ public class FirebirdService {
                 "TIME",
                 "CHAR",
                 "BIGINT",
-                "DOUBLE",
+                "DOUBLE PRECISION",
                 "TIMESTAMP",
                 "VARCHAR",
                 "BLOB"));
@@ -247,13 +293,13 @@ public class FirebirdService {
         choiceDialog.setHeaderText("Wybierz typ");
         choiceDialog.setTitle("Wybierz typ");
         Optional<String> typeResult = choiceDialog.showAndWait();
-        if(typeResult.isPresent()){
-            if (typeResult.get().equals("VARCHAR") || typeResult.get().equals("CHAR")){
+        if (typeResult.isPresent()) {
+            if (typeResult.get().equals("VARCHAR") || typeResult.get().equals("CHAR")) {
                 TextInputDialog sizeDialog = new TextInputDialog();
                 sizeDialog.setTitle("Podaj rozmiar");
                 sizeDialog.setContentText("Podaj rozmiar");
                 Optional<String> sizeResult = sizeDialog.showAndWait();
-                if(sizeResult.isPresent()){
+                if (sizeResult.isPresent()) {
                     return new Type(typeResult.get(), Integer.valueOf(sizeResult.get()));
                 } else {
                     throw new IllegalArgumentException("Nie podane rozmiary dla typu");
@@ -266,9 +312,25 @@ public class FirebirdService {
     }
 
     private String[] prepColsName(String[] columnsName) {
-        for(int i = 0; i < columnsName.length; i++){
+        for (int i = 0; i < columnsName.length; i++) {
             columnsName[i] = columnsName[i].replaceAll(" ", "");
         }
         return columnsName;
+    }
+
+    public void dropTable(String tableName) throws SQLException {
+        String query = "drop table " + tableName;
+        Statement statement = fireBirdConnector.createStatement();
+        statement.closeOnCompletion();
+        statement.execute(query);
+    }
+
+    public boolean isNumeric(String strNum) {
+        Pattern pattern = Pattern.compile("-?\\d+(\\.\\d+)?");
+
+        if (strNum == null) {
+            return false;
+        }
+        return pattern.matcher(strNum).matches();
     }
 }

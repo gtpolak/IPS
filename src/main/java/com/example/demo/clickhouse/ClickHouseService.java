@@ -95,35 +95,17 @@ public class ClickHouseService {
         }
 
         ChoiceDialog<String> dialog1 = new ChoiceDialog<>(cols.get(0), cols);
-        dialog1.setTitle("Wybierz pole klucz główny");
-        dialog1.setHeaderText("Wybierz pole, które ma zostać kluczem głównym");
+        dialog1.setTitle("Wybierz pole porządkujące");
+        dialog1.setHeaderText("Należy wybrać pole daty do porządkowania rekordów w bazie.");
         dialog1.setContentText("Wybierz pole");
 
-        Optional<String> id = dialog1.showAndWait();
-        if (!id.isPresent()) {
-            throw new IllegalArgumentException("Id nie zostało wybrane.");
+        Optional<String> orderCol = dialog1.showAndWait();
+        if (!orderCol.isPresent()) {
+            throw new IllegalArgumentException("Pole do porządkowania nie zostało wybrane");
         }
 
-        List<String> datesList = new ArrayList<>();
-
-        for (Map.Entry<String, Type> entry :
-                columnNameAndType.entrySet()) {
-            if (entry.getValue().getTypeName().equals("Date")) {
-                datesList.add(entry.getKey());
-            }
-        }
-
-        ChoiceDialog<String> dialog2 = new ChoiceDialog<>(datesList.get(0), datesList);
-        dialog2.setTitle("Wybierz pole daty");
-        dialog2.setHeaderText("Należy wybrać pole daty do porządkowania rekordów w bazie. Wymagane przez silnik tabeli MergeTree");
-        dialog2.setContentText("Wybierz pole");
-
-        Optional<String> date = dialog2.showAndWait();
-        if (!date.isPresent()) {
-            throw new IllegalArgumentException("Nie wybrano pola daty");
-        }
-
-        sql += " ENGINE = MergeTree(" + date.get() + ", (" + id.get() + ", " + date.get() + "), 8192)";
+        sql += "ENGINE = MergeTree\n" +
+                "ORDER BY " + orderCol.get();
 
 
         return sql;
@@ -172,25 +154,60 @@ public class ClickHouseService {
         return columnNameAndType;
     }
 
-    public boolean insertBatchData(String tableName, int numberOfCols, List<String> data) throws SQLException {
-        final String[] query = {"insert into " + tableName + " values ("};
-        AtomicInteger i = new AtomicInteger(1);
-        data.forEach(value -> {
-            if(isNumeric(value)){
-               query[0] += value;
-            } else {
-                query[0] += "'" + value + "'";
+    public boolean insertBatchData(String tableName, String[] colsTypes, List<List<String>> data) throws SQLException {
+        final boolean[] result = {true};
+        final String[] query = {""};
+        data.forEach(row -> {
+            try {
+                clickHouseConnection.getConnection().setAutoCommit(false);
+                query[0] = "insert into " + tableName + " values (";
+                AtomicInteger i = new AtomicInteger(0);
+                row.forEach(value -> {
+                    if (colsTypes[i.get()].contains("Int") || colsTypes[i.get()].contains("Float")) {
+                        if(value == null){
+                            value = "0";
+                        }
+                        query[0] += value;
+                    } else {
+                        if(value == null){
+                            value = "null";
+                        }
+                        if(value.contains("'")){
+                            value = value.replaceAll("'", "''");
+                        }
+                        if(colsTypes[i.get()].equals("DateTime") && value.contains(".")){
+                            value = value.substring(0, 19);
+                        }
+                        query[0] += "'" + value + "'";
+                    }
+                    if (i.get() == colsTypes.length-1) {
+                        query[0] += ")";
+                    } else {
+                        query[0] += ", ";
+                    }
+                    i.getAndIncrement();
+                });
+                Statement statement = clickHouseConnection.getStatement();
+                statement.closeOnCompletion();
+                statement.execute(query[0]);
+            } catch (Exception e){
+                System.out.println(query[0]);
+                e.printStackTrace();
+                result[0] = false;
             }
-            if(i.get() == data.size()){
-                query[0] += ")";
-            } else {
-                query[0] += ", ";
+
+            if(!result[0]){
+                return;
             }
-            i.getAndIncrement();
         });
-        Statement statement = clickHouseConnection.getStatement();
-        statement.closeOnCompletion();
-        return statement.execute(query[0]);
+        try {
+            clickHouseConnection.getConnection().commit();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            result[0] = false;
+        }
+        clickHouseConnection.getConnection().setAutoCommit(true);
+        return result[0];
     }
 
     public boolean isNumeric(String strNum) {

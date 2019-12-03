@@ -14,4 +14,5 @@
   <TextField id="fireBirdBatches" fx:id="firebirdSizeOfBatch" layoutX="30.0" layoutY="155.0" prefWidth="150.0" promptText="Podaj wielkość paczek" />
   <TextArea fx:id="logArea" layoutX="14.0" layoutY="366.0" prefWidth="572.0" wrapText="true" />
   <Button fx:id="firebirdCSVButton" layoutX="30.0" layoutY="80.0" mnemonicParsing="false" prefWidth="150.0" text="Importuj CSV" />
+  <Button fx:id="firebirdDeleteTable" layoutX="64.0" layoutY="301.0" mnemonicParsing="false" text="Usuń tabele" />
 </AnchorPane>
