@@ -234,6 +234,22 @@ public class MainSceneController {
 
         Set<String> clickHouseTablesNames = clickHouseService.getAllTables();
         clickHouseTables.getItems().addAll(clickHouseTablesNames);
+
+        clickHouseCSVButton.setOnAction(event -> {
+            FileChooser.ExtensionFilter extensionFilter = new FileChooser.ExtensionFilter("CSV File (*.csv)", "*.csv");
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Wybierz plik .csv");
+            fileChooser.getExtensionFilters().add(extensionFilter);
+            try {
+                clickHouseService.importCsv(fileChooser.showOpenDialog(stage), logArea);
+                refreshFirebirdTables();
+            } catch (IOException | SQLException | NullPointerException e) {
+                if(e instanceof NullPointerException){
+                    logArea.clear();
+                    logArea.appendText("Plik nie został wybrany");
+                }
+            }
+        });
     }
 
     @FXML
