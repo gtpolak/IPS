@@ -154,60 +154,16 @@ public class ClickHouseService {
         return columnNameAndType;
     }
 
-    public boolean insertBatchData(String tableName, String[] colsTypes, List<List<String>> data) throws SQLException {
-        final boolean[] result = {true};
-        final String[] query = {""};
-        data.forEach(row -> {
-            try {
-                clickHouseConnection.getConnection().setAutoCommit(false);
-                query[0] = "insert into " + tableName + " values (";
-                AtomicInteger i = new AtomicInteger(0);
-                row.forEach(value -> {
-                    if (colsTypes[i.get()].contains("Int") || colsTypes[i.get()].contains("Float")) {
-                        if(value == null){
-                            value = "0";
-                        }
-                        query[0] += value;
-                    } else {
-                        if(value == null){
-                            value = "null";
-                        }
-                        if(value.contains("'")){
-                            value = value.replaceAll("'", "''");
-                        }
-                        if(colsTypes[i.get()].equals("DateTime") && value.contains(".")){
-                            value = value.substring(0, 19);
-                        }
-                        query[0] += "'" + value + "'";
-                    }
-                    if (i.get() == colsTypes.length-1) {
-                        query[0] += ")";
-                    } else {
-                        query[0] += ", ";
-                    }
-                    i.getAndIncrement();
-                });
-                Statement statement = clickHouseConnection.getStatement();
-                statement.closeOnCompletion();
-                statement.execute(query[0]);
-            } catch (Exception e){
-                System.out.println(query[0]);
-                e.printStackTrace();
-                result[0] = false;
-            }
-
-            if(!result[0]){
-                return;
-            }
+    public void insertBatchData(String tableName, Map<String, Type> colsTypes, List<String[]> data) throws SQLException {
+        List<String> inserts = new ArrayList<>();
+        data.forEach(strings -> {
+            inserts.add(createInsertStatement(strings, colsTypes, tableName));
         });
-        try {
-            clickHouseConnection.getConnection().commit();
-        } catch (SQLException e) {
-            e.printStackTrace();
-            result[0] = false;
+        Statement statement = clickHouseConnection.getStatement();
+        for (String insert : inserts) {
+            statement.execute(insert);
         }
-        clickHouseConnection.getConnection().setAutoCommit(true);
-        return result[0];
+        statement.close();
     }
 
     public boolean isNumeric(String strNum) {
@@ -217,5 +173,69 @@ public class ClickHouseService {
             return false;
         }
         return pattern.matcher(strNum).matches();
+    }
+
+    private String createInsertStatement(String[] strings, Map<String, Type> firebirdType, String tableName) {
+        AtomicInteger index = new AtomicInteger(0);
+        final String[] query = new String[]{"insert into " + tableName + " values ("};
+        for(Map.Entry<String, Type> entry : firebirdType.entrySet()){
+            if(entry.getValue().getTypeName().contains("Int") || entry.getValue().getTypeName().contains("Float")){
+                if(index.get() == firebirdType.size()-1){
+                    query[0] += strings[index.getAndIncrement()] + ")";
+                } else {
+                    query[0] += strings[index.getAndIncrement()] + ", ";
+                }
+            } else {
+                if(strings[index.get()].contains("'")){
+                    strings[index.get()] = strings[index.get()].replaceAll("'", "''");
+                }
+                if(entry.getValue().getTypeName().equals("DateTime")){
+                    strings[index.get()] = strings[index.get()].substring(0, 19);
+                }
+                if(index.get() == firebirdType.size()-1){
+                    query[0] += "'" + strings[index.getAndIncrement()] + "')";
+                } else {
+                    query[0] += "'" + strings[index.getAndIncrement()] + "', ";
+                }
+            }
+        }
+        return query[0];
+    }
+
+    public Map<String, Type> getTableDescription(String tableName) throws SQLException {
+        Map<String, Type> tableDesc = new LinkedHashMap<>();
+        String query = "desc " + tableName;
+        Statement statement = clickHouseConnection.getStatement();
+        statement.closeOnCompletion();
+        ResultSet resultSet = statement.executeQuery(query);
+        while(resultSet.next()){
+            tableDesc.put(resultSet.getString(1), new Type(resultSet.getString(2)));
+        }
+        return tableDesc;
+    }
+
+    public int getTableCount(String tableName) throws SQLException, NumberFormatException {
+        String query = "select count(*) from " + tableName;
+        Statement statement = clickHouseConnection.getStatement();
+        statement.closeOnCompletion();
+        ResultSet resultSet = statement.executeQuery(query);
+        resultSet.next();
+        return Integer.parseInt(resultSet.getString(1));
+    }
+
+    public List<String[]> getBatchData(String tableName, int copyCount, int batchSize, int size) throws SQLException {
+        String query = "select * from " + tableName + " limit " + copyCount + ", " + copyCount + batchSize;
+        Statement statement = clickHouseConnection.getStatement();
+        statement.closeOnCompletion();
+        ResultSet resultSet = statement.executeQuery(query);
+        List<String[]> data = new ArrayList<>();
+        while(resultSet.next()){
+            String[] row = new String[size];
+            for(int i = 0; i < size; i++){
+                row[i] = resultSet.getString(i+1);
+            }
+            data.add(row);
+        }
+        return data;
     }
 }

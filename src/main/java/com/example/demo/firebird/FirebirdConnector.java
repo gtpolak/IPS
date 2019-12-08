@@ -18,7 +18,7 @@ public class FirebirdConnector {
 
     }
 
-    private Connection getConnection() {
+    public Connection getConnection() {
         if(connection == null){
             try{
                 Class.forName("org.firebirdsql.jdbc.FBDriver");

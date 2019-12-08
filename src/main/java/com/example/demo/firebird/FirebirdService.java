@@ -12,6 +12,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
 @Component
@@ -23,7 +24,7 @@ public class FirebirdService {
         this.fireBirdConnector = fireBirdConnector;
     }
 
-    public Set<String> getTablesName() {
+    public Set<String> getAllTables() {
         Set<String> tabsNames = new HashSet<>();
         Statement statement = fireBirdConnector.createStatement();
         try {
@@ -149,12 +150,13 @@ public class FirebirdService {
             sql += ");";
             Statement statement = fireBirdConnector.createStatement();
             statement.closeOnCompletion();
-            return statement.execute(sql);
+            statement.execute(sql);
         } catch (Exception e) {
+            System.out.println(e.getMessage());
             e.printStackTrace();
             return false;
         }
-        //return true;
+        return true;
     }
 
     public int getRowsCount(String tableName) {
@@ -170,23 +172,23 @@ public class FirebirdService {
         return 0;
     }
 
-    public List<List<String>> getDataForBatchInsert(String tableName, int sizeOfBatch, int copiedRows, int numberOfCols) throws SQLException {
-        List<List<String>> result = new ArrayList<>();
+    public List<String[]> getDataForBatchInsert(String tableName, int sizeOfBatch, int copiedRows, int numberOfCols) throws SQLException {
         Statement statement = fireBirdConnector.createStatement();
         statement.closeOnCompletion();
         String query = "select * from " + tableName + " rows " + (copiedRows) + " to " + (copiedRows + sizeOfBatch - 1);
         ResultSet resultSet = statement.executeQuery(query);
-        while (resultSet.next()) {
-            List<String> row = new ArrayList<>();
-            for (int i = 1; i <= numberOfCols; i++) {
-                row.add(resultSet.getString(i));
+        List<String[]> data = new ArrayList<>();
+        while(resultSet.next()){
+            String[] row = new String[numberOfCols];
+            for(int i = 0; i < numberOfCols; i++){
+                row[i] = resultSet.getString(i+1);
             }
-            result.add(row);
+            data.add(row);
         }
-        return result;
+        return data;
     }
 
-    public void importCsv(File file, TextArea logArea) throws FileNotFoundException, IOException, SQLException {
+    public void importCsv(File file, TextArea logArea) throws FileNotFoundException, IOException, SQLException, NullPointerException {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
         String line = "";
@@ -302,7 +304,7 @@ public class FirebirdService {
                 if (sizeResult.isPresent()) {
                     return new Type(typeResult.get(), Integer.valueOf(sizeResult.get()));
                 } else {
-                    throw new IllegalArgumentException("Nie podane rozmiary dla typu");
+                    throw new IllegalArgumentException("Nie podano rozmiaru dla typu");
                 }
             }
             return new Type(typeResult.get());
@@ -332,5 +334,50 @@ public class FirebirdService {
             return false;
         }
         return pattern.matcher(strNum).matches();
+    }
+
+    public Map<String, Type> convertToFirebirdDataTypes(Map<String, Type> tableDesc) {
+        for(Map.Entry<String, Type> entry : tableDesc.entrySet()){
+            entry.setValue(getType(entry.getKey()));
+        }
+        return tableDesc;
+    }
+
+    public void insertBatchData(List<String[]> data, Map<String, Type> firebirdType, String tableName) throws SQLException {
+        List<String> inserts = new ArrayList<>();
+        data.forEach(strings -> {
+            inserts.add(createInsertStatement(strings, firebirdType, tableName));
+        });
+
+        Statement statement = fireBirdConnector.createStatement();
+        for (String insert : inserts) {
+            statement.execute(insert);
+        }
+        statement.close();
+    }
+
+    private String createInsertStatement(String[] strings, Map<String, Type> firebirdType, String tableName) {
+        AtomicInteger index = new AtomicInteger(0);
+        final String[] query = new String[]{"insert into " + tableName + " values ("};
+        for(Map.Entry<String, Type> entry : firebirdType.entrySet()){
+            if(entry.getValue().getTypeName().contains("INT") || entry.getValue().getTypeName().contains("FLOAT")
+                    || entry.getValue().getTypeName().contains("DOUBLE")){
+                if(index.get() == firebirdType.size()-1){
+                    query[0] += strings[index.getAndIncrement()] + ")";
+                } else {
+                    query[0] += strings[index.getAndIncrement()] + ", ";
+                }
+            } else {
+                if(strings[index.get()].contains("'")){
+                    strings[index.get()] = strings[index.get()].replaceAll("'", "''");
+                }
+                if(index.get() == firebirdType.size()-1){
+                    query[0] += "'" + strings[index.getAndIncrement()] + "')";
+                } else {
+                    query[0] += "'" + strings[index.getAndIncrement()] + "', ";
+                }
+            }
+        }
+        return query[0];
     }
 }

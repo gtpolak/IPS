@@ -24,6 +24,10 @@ public class MainSceneController {
     @FXML public TextArea logArea;
     @FXML public Button firebirdCSVButton;
     @FXML public Button firebirdDeleteTable;
+    @FXML public Button clickHouseDeleteTable;
+    @FXML public Button clickHouseCSVButton;
+    @FXML public ComboBox<String> clickHouseTables;
+    @FXML public TextField clickHouseSizeOfBatch;
 
     private final ClickHouseService clickHouseService;
     private final FirebirdService firebirdService;
@@ -32,6 +36,97 @@ public class MainSceneController {
     public MainSceneController(ClickHouseService clickHouseService, FirebirdService firebirdService) {
         this.clickHouseService = clickHouseService;
         this.firebirdService = firebirdService;
+    }
+
+    @FXML
+    public void copyToFirebird(){
+        String tableName = clickHouseTables.getSelectionModel().getSelectedItem();
+        if(tableName == null){
+            clearAndAppendToLogArea("Wybierz tabele");
+            return;
+        }
+        Map<String, Type> tableDesc;
+        try {
+            tableDesc = clickHouseService.getTableDescription(tableName);
+        } catch (SQLException e) {
+            clearAndAppendToLogArea("Błąd podczas pobierania typów danych tabeli");
+            e.printStackTrace();
+            return;
+        }
+
+        firebirdService.getAllTables().forEach(System.out::println);
+
+        if(firebirdService.getAllTables().stream().anyMatch(s -> s.equals(tableName))) {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Wybierz opcje");
+            alert.setHeaderText("Usunąć tabele " + tableName + "?");
+            alert.setContentText("Przed rozpoczęciem kopiowania należy usunąć tabelę");
+            Optional<ButtonType> result = alert.showAndWait();
+            if(!result.isPresent()){
+                clearAndAppendToLogArea("Nie można kontynuować, ponieważ anulowano usunięcie tabeli");
+                return;
+            }
+            if(result.get() == ButtonType.OK){
+                try {
+                    firebirdService.dropTable(tableName);
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                    clearAndAppendToLogArea("Błąd podczas usuwania tabeli");
+                }
+            } else {
+                clearAndAppendToLogArea("Anulowano usunięcie tabeli");
+                return;
+            }
+        }
+
+        Map<String, Type> firebirdType = firebirdService.convertToFirebirdDataTypes(tableDesc);
+
+        if(firebirdService.createTable(tableName, firebirdType)){
+            refreshFirebirdTables();
+            appendToLogArea("Utworzono tabelę " + tableName + " w bazie Firebird");
+        } else {
+            appendToLogArea("Błąd podczas tworzenia tabeli " + tableName);
+            return;
+        }
+
+        int tableCount = 0;
+        try {
+            tableCount = clickHouseService.getTableCount(tableName);
+        } catch (SQLException e) {
+            clearAndAppendToLogArea("Błąd podczas pobierania liczby danych do skopiowania");
+            e.printStackTrace();
+            return;
+        }
+        System.out.println("count = " + tableCount);
+
+        int batchSize = 0;
+        try{
+            batchSize = Integer.parseInt(clickHouseSizeOfBatch.getText());
+        } catch (NumberFormatException e){
+            clearAndAppendToLogArea("Zły format rozmiaru paczki");
+            return;
+        }
+        appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
+        int copyCount = 0;
+        while(copyCount < tableCount){
+            List<String[]> data;
+            try {
+                data = clickHouseService.getBatchData(tableName, copyCount, batchSize, firebirdType.size());
+            } catch (SQLException e) {
+                e.printStackTrace();
+                clearAndAppendToLogArea("Błąd podczas pobierania danych");
+                return;
+            }
+            try {
+                firebirdService.insertBatchData(data, firebirdType, tableName);
+            } catch (SQLException e) {
+                e.printStackTrace();
+                clearAndAppendToLogArea("Błąd podczas wstawiania danych");
+                return;
+            }
+            copyCount += batchSize;
+        }
+        appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
     }
 
     @FXML
@@ -92,23 +187,11 @@ public class MainSceneController {
         }
         logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto kopiowanie tabeli " + tableName + " do bazy ClickHouse");
         int copiedRows = 1;
-        while(copiedRows <= numberOfRows+1){
+        while(copiedRows < numberOfRows){
             try {
-                List<List<String>> listOfData;
-                if(copiedRows + sizeOfBatch > numberOfRows){
-                    listOfData = firebirdService.getDataForBatchInsert(tableName, numberOfRows-copiedRows+1, copiedRows, numberOfCols);
-                } else {
-                    listOfData = firebirdService.getDataForBatchInsert(tableName, sizeOfBatch, copiedRows, numberOfCols);
-                }
-                clickHouseService.insertBatchData(tableName, colsTypesArray, listOfData);
-//                listOfData.forEach(data -> {
-//                    try {
-//                        clickHouseService.insertBatchData(tableName, numberOfCols, data);
-//                    } catch (SQLException e) {
-//                        logArea.setText("Błąd podczas wstawiania danych");
-//                        return;
-//                    }
-//                });
+                List<String[]> listOfData;
+                listOfData = firebirdService.getDataForBatchInsert(tableName, sizeOfBatch, copiedRows, numberOfCols);
+                clickHouseService.insertBatchData(tableName, colTypes, listOfData);
             } catch (SQLException e){
                 e.printStackTrace();
                 firebirdNotifications.setText("Błąd podczas kopiowania danych");
@@ -124,7 +207,7 @@ public class MainSceneController {
         firebirdDeleteTable.setOnAction(event -> {
             try {
                 firebirdService.dropTable(firebirdTables.getSelectionModel().getSelectedItem());
-                refreshTables();
+                refreshFirebirdTables();
             } catch (SQLException e) {
                 e.printStackTrace();
                 firebirdNotifications.setText(e.getMessage());
@@ -138,23 +221,58 @@ public class MainSceneController {
             fileChooser.getExtensionFilters().add(extensionFilter);
             try {
                 firebirdService.importCsv(fileChooser.showOpenDialog(stage), logArea);
-                refreshTables();
-            } catch (IOException | SQLException e) {
-                e.printStackTrace();
+                refreshFirebirdTables();
+            } catch (IOException | SQLException | NullPointerException e) {
+                if(e instanceof NullPointerException){
+                    logArea.clear();
+                    logArea.appendText("Plik nie został wybrany");
+                }
             }
         });
-        Set<String> firebirdTabsNames = firebirdService.getTablesName();
+        Set<String> firebirdTabsNames = firebirdService.getAllTables();
 
-        firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[0]));
+        firebirdTables.getItems().addAll(firebirdTabsNames);
+
+        Set<String> clickHouseTablesNames = clickHouseService.getAllTables();
+        clickHouseTables.getItems().addAll(clickHouseTablesNames);
     }
 
-    private void refreshTables() {
-        Set<String> firebirdTabsNames = firebirdService.getTablesName();
+    @FXML
+    public void dropClickHouseTable(){
+        String tableName = clickHouseTables.getSelectionModel().getSelectedItem();
+        try {
+            clickHouseService.deleteTable(tableName);
+        } catch (SQLException e) {
+            logArea.clear();
+            logArea.appendText(LocalDateTime.now().toString() + " - błąd podczas usuwania tabeli " + tableName + " z ClickHouse\n");
+            e.printStackTrace();
+        }
+        logArea.appendText(LocalDateTime.now().toString() + " - usunięto tabelę " + tableName + " z ClickHouse\n");
+        refreshClickHouseTables();
+    }
+
+    private void refreshClickHouseTables() {
+        Set<String> clickHouseTablesNames = clickHouseService.getAllTables();
+        clickHouseTables.getItems().removeAll(clickHouseTables.getItems());
+        clickHouseTables.getItems().addAll(clickHouseTablesNames);
+    }
+
+    private void refreshFirebirdTables() {
+        Set<String> firebirdTabsNames = firebirdService.getAllTables();
         firebirdTables.getItems().removeAll(firebirdTables.getItems());
         firebirdTables.getItems().addAll(firebirdTabsNames.toArray(new String[0]));
     }
 
     public void setStage(Stage stage){
         this.stage = stage;
+    }
+
+    public void clearAndAppendToLogArea(String message){
+        logArea.clear();
+        logArea.appendText(LocalDateTime.now().toString() + " - " + message);
+    }
+
+    public void appendToLogArea(String message){
+        logArea.appendText(LocalDateTime.now().toString() + " - " + message);
     }
 }
