@@ -11,8 +11,6 @@
 
 **Funkcjonalności aplikacji:**
  * możliwość wczytania danych z pliku 
- * możliwość przeglądania dostępnych danych
- * możliwość modyfikowania danych
  * możliwość usuwania danych
  * możliwość przenoszenia danych pomiędzy bazami
 
