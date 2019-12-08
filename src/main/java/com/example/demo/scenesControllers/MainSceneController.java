@@ -54,8 +54,6 @@ public class MainSceneController {
             return;
         }
 
-        firebirdService.getAllTables().forEach(System.out::println);
-
         if(firebirdService.getAllTables().stream().anyMatch(s -> s.equals(tableName))) {
             Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
             alert.setTitle("Wybierz opcje");
@@ -97,7 +95,6 @@ public class MainSceneController {
             e.printStackTrace();
             return;
         }
-        System.out.println("count = " + tableCount);
 
         int batchSize = 0;
         try{
@@ -127,6 +124,7 @@ public class MainSceneController {
             copyCount += batchSize;
         }
         appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
+        firebirdService.closeConnection();
     }
 
     @FXML
@@ -200,6 +198,7 @@ public class MainSceneController {
             copiedRows += sizeOfBatch;
         }
         logArea.appendText(LocalDateTime.now().toString() + " - zakończono kopiowanie tabeli " + tableName + " do bazy ClickHouse");
+        clickHouseService.closeConnection();
     }
 
     @FXML

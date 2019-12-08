@@ -42,6 +42,7 @@ public class ClickHouseConnection {
     public void close() {
         try {
             connection.close();
+            connection = null;
         } catch (SQLException e) {
             e.printStackTrace();
         }

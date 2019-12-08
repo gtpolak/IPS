@@ -238,4 +238,8 @@ public class ClickHouseService {
         }
         return data;
     }
+
+    public void closeConnection() {
+        clickHouseConnection.close();
+    }
 }

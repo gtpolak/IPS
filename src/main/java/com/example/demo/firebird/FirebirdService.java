@@ -380,4 +380,8 @@ public class FirebirdService {
         }
         return query[0];
     }
+
+    public void closeConnection() {
+        fireBirdConnector.close();
+    }
 }
