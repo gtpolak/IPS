@@ -88,6 +88,7 @@ public class MainSceneController {
         }
 
         int tableCount = 0;
+
         try {
             tableCount = clickHouseService.getTableCount(tableName);
         } catch (SQLException e) {
@@ -95,7 +96,7 @@ public class MainSceneController {
             e.printStackTrace();
             return;
         }
-
+        System.out.println("Table count = " + tableCount);
         int batchSize = 0;
         try{
             batchSize = Integer.parseInt(clickHouseSizeOfBatch.getText());

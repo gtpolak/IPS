@@ -228,7 +228,7 @@ public class ClickHouseService {
     }
 
     public List<String[]> getBatchData(String tableName, int copyCount, int batchSize, int size) throws SQLException {
-        String query = "select * from " + tableName + " limit " + copyCount + ", " + copyCount + batchSize;
+        String query = "select * from " + tableName + " limit " + copyCount + ", " + (copyCount + batchSize);
         Statement statement = clickHouseConnection.getStatement();
         statement.closeOnCompletion();
         ResultSet resultSet = statement.executeQuery(query);
