@@ -11,6 +11,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -192,42 +193,43 @@ public class FirebirdService {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
         String line = "";
+
         String tableName = null;
-        int connReset = 1;
-        boolean firstLine = true;
-        Map<String, Type> map = new LinkedHashMap<>();
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Podaj nazwe dla tabeli");
+        dialog.setHeaderText("Tworzenie nowej tabeli");
+        dialog.setContentText("Podaj nazwe dla tabeli");
+        Optional<String> result = dialog.showAndWait();
+        if (result.isPresent()) {
+            tableName = result.get();
+        } else {
+            throw new IllegalArgumentException("Nie podano nazwy");
+        }
+        line = bufferedReader.readLine();
+        if(line == null){
+            throw new IllegalArgumentException("Plik jest pusty");
+        }
+        String[] columnsName = line.split(";");
+        columnsName = prepColsName(columnsName);
+        Map<String, Type> colTypes = new LinkedHashMap<>();
+        for (int i = 0; i < columnsName.length; i++) {
+            colTypes.put(columnsName[i], getType(columnsName[i]));
+        }
+
+        String createTableQuery = prepareCreateTableStatement(tableName, colTypes);
+
+        System.out.println(createTableQuery);
+
+        Statement statement = fireBirdConnector.createStatement();
+        statement.closeOnCompletion();
+        statement.execute(createTableQuery);
+        logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName +"\n");
+        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie\n");
+        int resetConn = 1;
+        String queries = "";
         while ((line = bufferedReader.readLine()) != null) {
             String[] separated = line.split(";");
-            if (firstLine) {
-                TextInputDialog dialog = new TextInputDialog();
-                dialog.setTitle("Podaj nazwe dla tabeli");
-                dialog.setHeaderText("Tworzenie nowej tabeli");
-                dialog.setContentText("Podaj nazwe dla tabeli");
-                Optional<String> result = dialog.showAndWait();
-                if (result.isPresent()) {
-                    tableName = result.get();
-                } else {
-                    throw new IllegalArgumentException("Nie podano nazwy");
-                }
-                String[] columnsName = separated;
-                columnsName = prepColsName(columnsName);
-                for (int i = 0; i < columnsName.length; i++) {
-                    map.put(columnsName[i], getType(columnsName[i]));
-                }
 
-                String query = prepareCreateTableStatement(tableName, map);
-
-                System.out.println(query);
-
-                Statement statement = fireBirdConnector.createStatement();
-                statement.closeOnCompletion();
-                statement.execute(query);
-
-                firstLine = false;
-                logArea.appendText(LocalDate.now().toString() + " - Utworzono tabelę " + tableName +"\n");
-                logArea.appendText(LocalDate.now().toString() + " - rozpoczęto importowanie\n");
-                continue;
-            }
             String query = "insert into " + tableName + " values (";
             for(int i = 0; i < separated.length; i++){
                 if(separated[i].equals("") || separated[i] == null){
@@ -246,12 +248,24 @@ public class FirebirdService {
                     query += ")";
                 }
             }
-            Statement statement = fireBirdConnector.createStatement();
+            queries += query + "; ";
+            if(resetConn%30 != 0){
+                resetConn++;
+                continue;
+            }
+            statement = fireBirdConnector.createStatement();
             statement.closeOnCompletion();
-            statement.execute(query);
-            fireBirdConnector.close();
+            try {
+                statement.execute(query);
+                queries = "";
+                resetConn = 1;
+            }catch (SQLException e){
+                e.printStackTrace();
+                System.out.println(query);
+                break;
+            }
         }
-        logArea.appendText(LocalDate.now().toString() + " - zakończono importowanie\n");
+        logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie\n");
     }
 
     private String prepareCreateTableStatement(String tableName, Map<String, Type> map) {

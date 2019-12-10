@@ -3,6 +3,7 @@ package com.example.demo.scenesControllers;
 import com.example.demo.clickhouse.ClickHouseService;
 import com.example.demo.firebird.FirebirdService;
 import com.example.demo.models.Type;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.stage.FileChooser;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 public class MainSceneController {
@@ -32,6 +34,7 @@ public class MainSceneController {
     private final ClickHouseService clickHouseService;
     private final FirebirdService firebirdService;
     private Stage stage;
+    private boolean isCopying = false;
 
     public MainSceneController(ClickHouseService clickHouseService, FirebirdService firebirdService) {
         this.clickHouseService = clickHouseService;
@@ -104,28 +107,62 @@ public class MainSceneController {
             clearAndAppendToLogArea("Zły format rozmiaru paczki");
             return;
         }
+        int finalBatchSize = batchSize;
+        int finalTableCount = tableCount;
+        Task<Void> task = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
+                int copyCount = 0;
+                while(copyCount < finalTableCount){
+                    List<String[]> data;
+                    try {
+                        data = clickHouseService.getBatchData(tableName, copyCount, finalBatchSize, firebirdType.size());
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                        clearAndAppendToLogArea("Błąd podczas pobierania danych");
+                        return null;
+                    }
+                    try {
+                        firebirdService.insertBatchData(data, firebirdType, tableName);
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                        clearAndAppendToLogArea("Błąd podczas wstawiania danych");
+                        return null;
+                    }
+                    copyCount += finalBatchSize;
+                }
+                appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
+                firebirdService.closeConnection();
+                return null;
+            }
+        };
+        AtomicReference<Alert> alert = new AtomicReference<>();
+        //alert.set(new Alert(Alert.AlertType.INFORMATION));
+        task.setOnRunning(event -> {
+            alert.set(new Alert(Alert.AlertType.INFORMATION));
+            alert.get().setTitle("Trwa kopiowanie, proszę czekać");
+            alert.get().setContentText("Trwa kopiowanie, proszę czekać. Po zakończeniu zostanie podany stosowny komunikat do pola z logami");
+            alert.get().showAndWait();
+        });
+        task.setOnSucceeded(event -> {
+            alert.get().close();
+            appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
+            restartFirebirdService();
+        });
         appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
-        int copyCount = 0;
-        while(copyCount < tableCount){
-            List<String[]> data;
-            try {
-                data = clickHouseService.getBatchData(tableName, copyCount, batchSize, firebirdType.size());
-            } catch (SQLException e) {
-                e.printStackTrace();
-                clearAndAppendToLogArea("Błąd podczas pobierania danych");
-                return;
-            }
-            try {
-                firebirdService.insertBatchData(data, firebirdType, tableName);
-            } catch (SQLException e) {
-                e.printStackTrace();
-                clearAndAppendToLogArea("Błąd podczas wstawiania danych");
-                return;
-            }
-            copyCount += batchSize;
-        }
-        appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
-        firebirdService.closeConnection();
+        new Thread(task).start();
+    }
+
+    private void restartFirebirdService() {
+            new Thread(() -> {
+                try {
+                    Runtime.getRuntime().exec("net stop FireBirdServerDefaultInstance");
+                    Thread.sleep(1000);
+                    Runtime.getRuntime().exec("net start FireBirdServerDefaultInstance");
+                } catch (IOException | InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
     }
 
     @FXML
@@ -133,7 +170,7 @@ public class MainSceneController {
         logArea.clear();
         String tableName = firebirdTables.getSelectionModel().getSelectedItem();
         if (tableName == null) {
-            firebirdNotifications.setText("Nie wybrałeś tabeli");
+            clearAndAppendToLogArea("Nie wybrałeś tabeli");
             return;
         }
 
@@ -149,33 +186,33 @@ public class MainSceneController {
                     clickHouseService.deleteTable(tableName);
                 } catch (SQLException e) {
                     e.printStackTrace();
-                    firebirdNotifications.setText("Błąd podczas usuwania tabeli");
+                    clearAndAppendToLogArea("Błąd podczas usuwania tabeli");
                 }
             } else {
-                firebirdNotifications.setText("Anulowano");
+                clearAndAppendToLogArea("Anulowano");
                 return;
             }
         }
         int sizeOfBatch;
         Map<String, Type> colTypes = firebirdService.getColumnNameAndTypeFromTable(tableName);
         if (clickHouseService.createTable(tableName, colTypes)) {
-            logArea.appendText(LocalDateTime.now().toString() + " - utworzono tabele " + tableName + " w bazie ClickHouse");
+            appendToLogArea(LocalDateTime.now().toString() + " - utworzono tabele " + tableName + " w bazie ClickHouse");
             try {
                 sizeOfBatch = Integer.parseInt(firebirdSizeOfBatch.getText());
             } catch (NumberFormatException e){
                 //e.printStackTrace();
-                firebirdNotifications.setText("Zły format rozmiaru paczek");
+                clearAndAppendToLogArea("Zły format rozmiaru paczek");
                 return;
             }
         } else {
-            firebirdNotifications.setText("Błąd podczas tworzenia tabeli w clickHouse");
+            clearAndAppendToLogArea("Błąd podczas tworzenia tabeli w clickHouse");
             return;
         }
         int numberOfCols = firebirdService.getColumnNameAndTypeFromTable(tableName).size();
         int numberOfRows = firebirdService.getRowsCount(tableName);
 
         if(numberOfRows == 0){
-            firebirdNotifications.setText("Tabela jest pusta");
+            clearAndAppendToLogArea("Tabela " + tableName + " jest pusta");
             return;
         }
         String[] colsTypesArray = new String[colTypes.size()];
@@ -184,21 +221,40 @@ public class MainSceneController {
             colsTypesArray[i] = entry.getValue().getTypeName();
             i++;
         }
-        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto kopiowanie tabeli " + tableName + " do bazy ClickHouse");
-        int copiedRows = 1;
-        while(copiedRows < numberOfRows){
-            try {
-                List<String[]> listOfData;
-                listOfData = firebirdService.getDataForBatchInsert(tableName, sizeOfBatch, copiedRows, numberOfCols);
-                clickHouseService.insertBatchData(tableName, colTypes, listOfData);
-            } catch (SQLException e){
-                e.printStackTrace();
-                firebirdNotifications.setText("Błąd podczas kopiowania danych");
-                return;
+        Task<Void> task = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
+                int copiedRows = 1;
+                while(copiedRows < numberOfRows){
+                    try {
+                        List<String[]> listOfData;
+                        listOfData = firebirdService.getDataForBatchInsert(tableName, sizeOfBatch, copiedRows, numberOfCols);
+                        clickHouseService.insertBatchData(tableName, colTypes, listOfData);
+                    } catch (SQLException e){
+                        e.printStackTrace();
+                        appendToLogArea("Błąd podczas kopiowania danych do ClickHouse");
+                        return null;
+                    }
+                    copiedRows += sizeOfBatch;
+                }
+                return null;
             }
-            copiedRows += sizeOfBatch;
-        }
-        logArea.appendText(LocalDateTime.now().toString() + " - zakończono kopiowanie tabeli " + tableName + " do bazy ClickHouse");
+        };
+        AtomicReference<Alert> alert = new AtomicReference<>();
+        //alert.set(new Alert(Alert.AlertType.INFORMATION));
+        task.setOnRunning(event -> {
+            alert.set(new Alert(Alert.AlertType.INFORMATION));
+            alert.get().setTitle("Trwa kopiowanie, proszę czekać");
+            alert.get().setContentText("Trwa kopiowanie, proszę czekać. Po zakończeniu zostanie podany stosowny komunikat do pola z logami");
+            alert.get().showAndWait();
+        });
+        task.setOnSucceeded(event -> {
+            alert.get().close();
+            appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy Firebird do bazy ClickHouse");
+            restartFirebirdService();
+        });
+        appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy Firebird do bazy ClickHouse");
+        new Thread(task).start();
         clickHouseService.closeConnection();
     }
 
@@ -246,8 +302,15 @@ public class MainSceneController {
                 refreshFirebirdTables();
             } catch (IOException | SQLException | NullPointerException e) {
                 if(e instanceof NullPointerException){
-                    logArea.clear();
-                    logArea.appendText("Plik nie został wybrany");
+                    appendToLogArea("Plik nie został wybrany");
+                }
+                if(e instanceof SQLException){
+                    ((SQLException) e).printStackTrace();
+                    appendToLogArea("Błąd podczas wstawiania danych do bazy ClickHouse");
+                }
+                if(e instanceof IOException){
+                    ((IOException) e).printStackTrace();
+                    appendToLogArea("Błąd podczas czytania pliku");
                 }
             }
         });
@@ -285,10 +348,10 @@ public class MainSceneController {
 
     public void clearAndAppendToLogArea(String message){
         logArea.clear();
-        logArea.appendText(LocalDateTime.now().toString() + " - " + message);
+        logArea.appendText(LocalDateTime.now().toString() + " - " + message + "\n");
     }
 
     public void appendToLogArea(String message){
-        logArea.appendText(LocalDateTime.now().toString() + " - " + message);
+        logArea.appendText(LocalDateTime.now().toString() + " - " + message + "\n");
     }
 }

@@ -4,6 +4,7 @@ import com.example.demo.models.Type;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
+import org.joda.time.DateTime;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
@@ -11,7 +12,12 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -62,7 +68,7 @@ public class ClickHouseService {
             columnNameAndType = convertToClickHouseTypes(columnNameAndType);
 
             String sql = prepareCreateTableStatement(tableName, columnNameAndType);
-            System.out.println(sql);
+
             Connection connection = clickHouseConnection.getConnection();
 
             Statement statement = connection.createStatement();
@@ -159,15 +165,19 @@ public class ClickHouseService {
     }
 
     public void insertBatchData(String tableName, Map<String, Type> colsTypes, List<String[]> data) throws SQLException {
-        List<String> inserts = new ArrayList<>();
-        data.forEach(strings -> {
-            inserts.add(createInsertStatement(strings, colsTypes, tableName));
-        });
+        String query = createInsertStatement(tableName, colsTypes, data);
+
         Statement statement = clickHouseConnection.getStatement();
-        for (String insert : inserts) {
-            statement.execute(insert);
-        }
+        statement.execute(query);
         statement.close();
+    }
+
+    public String createInsertStatement(String tableName, Map<String, Type> colsTypes, List<String[]> data){
+        final String[] query = {"insert into " + tableName + " values "};
+        data.forEach(strings -> {
+            query[0] += createInsertStatement(strings, colsTypes) + " ";
+        });
+        return query[0];
     }
 
     public boolean isNumeric(String strNum) {
@@ -177,6 +187,33 @@ public class ClickHouseService {
             return false;
         }
         return pattern.matcher(strNum).matches();
+    }
+
+    private String createInsertStatement(String[] strings, Map<String, Type> firebirdType) {
+        AtomicInteger index = new AtomicInteger(0);
+        final String[] query = new String[]{"("};
+        for (Map.Entry<String, Type> entry : firebirdType.entrySet()) {
+            if (entry.getValue().getTypeName().contains("Int") || entry.getValue().getTypeName().contains("Float")) {
+                if (index.get() == firebirdType.size() - 1) {
+                    query[0] += strings[index.getAndIncrement()] + ")";
+                } else {
+                    query[0] += strings[index.getAndIncrement()] + ", ";
+                }
+            } else {
+                if (strings[index.get()].contains("'")) {
+                    strings[index.get()] = strings[index.get()].replaceAll("'", "''");
+                }
+                if (entry.getValue().getTypeName().equals("DateTime")) {
+                    strings[index.get()] = strings[index.get()].substring(0, 19);
+                }
+                if (index.get() == firebirdType.size() - 1) {
+                    query[0] += "'" + strings[index.getAndIncrement()] + "')";
+                } else {
+                    query[0] += "'" + strings[index.getAndIncrement()] + "', ";
+                }
+            }
+        }
+        return query[0];
     }
 
     private String createInsertStatement(String[] strings, Map<String, Type> firebirdType, String tableName) {
@@ -250,71 +287,108 @@ public class ClickHouseService {
     public void importCsv(File file, TextArea logArea) throws IOException, SQLException {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
-        String line = "";
+
+        final String[] line = {""};
+
+
         String tableName = null;
-        int connReset = 1;
-        boolean firstLine = true;
-        Map<String, Type> map = new LinkedHashMap<>();
-        while ((line = bufferedReader.readLine()) != null) {
-            String[] separated = line.split(";");
-            if (firstLine) {
-                TextInputDialog dialog = new TextInputDialog();
-                dialog.setTitle("Podaj nazwe dla tabeli");
-                dialog.setHeaderText("Tworzenie nowej tabeli");
-                dialog.setContentText("Podaj nazwe dla tabeli");
-                Optional<String> result = dialog.showAndWait();
-                if (result.isPresent()) {
-                    tableName = result.get();
-                } else {
-                    throw new IllegalArgumentException("Nie podano nazwy");
-                }
-                String[] columnsName = separated;
-                columnsName = prepColsName(columnsName);
-                for (int i = 0; i < columnsName.length; i++) {
-                    map.put(columnsName[i], getType(columnsName[i]));
-                }
-
-                String query = prepareCreateTableStatement(tableName, map);
-
-                System.out.println(query);
-
-                Statement statement = clickHouseConnection.getStatement();
-                statement.closeOnCompletion();
-                statement.execute(query);
-
-                firstLine = false;
-                logArea.appendText(LocalDate.now().toString() + " - Utworzono tabelę " + tableName + "\n");
-                logArea.appendText(LocalDate.now().toString() + " - rozpoczęto importowanie\n");
-                continue;
-            }
-            String query = "insert into " + tableName + " values (";
-            for (int i = 0; i < separated.length; i++) {
-                if (separated[i].equals("") || separated[i] == null) {
-                    query += "null";
-                } else if (isNumeric(separated[i])) {
-                    query += separated[i];
-                } else {
-                    if (separated[i].contains("'")) {
-                        separated[i] = separated[i].replaceAll("'", "''");
-                    }
-                    query += "'" + separated[i] + "'";
-                }
-                if (i != separated.length - 1) {
-                    query += ", ";
-                } else {
-                    query += ")";
-                }
-            }
-            Statement statement = clickHouseConnection.getStatement();
-            statement.closeOnCompletion();
-            statement.execute(query);
-            clickHouseConnection.close();
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Podaj nazwe dla tabeli");
+        dialog.setHeaderText("Tworzenie nowej tabeli");
+        dialog.setContentText("Podaj nazwe dla tabeli");
+        Optional<String> result = dialog.showAndWait();
+        if (result.isPresent()) {
+            tableName = result.get();
+        } else {
+            throw new IllegalArgumentException("Nie podano nazwy");
         }
-        logArea.appendText(LocalDate.now().toString() + " - zakończono importowanie\n");
+        line[0] = bufferedReader.readLine();
+        if(line[0] == null){
+            throw new IllegalArgumentException("Plik jest pusty");
+        }
+        String[] columnsName = line[0].split(";");
+        Map<String, Type> colTypes = new LinkedHashMap<>();
+        columnsName = prepColsName(columnsName);
+        for (int i = 0; i < columnsName.length; i++) {
+            colTypes.put(columnsName[i], getType(columnsName[i]));
+        }
+        String query = prepareCreateTableStatement(tableName, colTypes);
+        System.out.println(query);
+
+        final Statement[] statement = {clickHouseConnection.getStatement()};
+        statement[0].closeOnCompletion();
+        statement[0].execute(query);
+        logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName + "\n");
+        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie\n");
+
+
+        final String[] insertQuery = {"insert into " + tableName + " values "};
+        String finalTableName = tableName;
+        new Thread(() -> {
+            int a = 1;
+            while (true) {
+                try {
+                    if ((line[0] = bufferedReader.readLine()) == null) break;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                String[] separated = line[0].split(";");
+                if(a%1000 != 0){
+                    insertQuery[0] += prepareInsert(colTypes, separated) + " ";
+                    a++;
+                    continue;
+                }
+                try {
+                    statement[0] = clickHouseConnection.getStatement();
+                    statement[0].closeOnCompletion();
+                    statement[0].execute(insertQuery[0]);
+                } catch (SQLException e){
+                    e.printStackTrace();
+                }
+                insertQuery[0] = "insert into " + finalTableName + " values ";
+                a = 1;
+            }
+            try {
+                bufferedReader.close();
+                fileReader.close();
+                statement[0] = clickHouseConnection.getStatement();
+                statement[0].closeOnCompletion();
+                statement[0].execute(insertQuery[0]);
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie\n");
+        }).start();
+    }
+
+    private String prepareInsert(Map<String, Type> map, String[] separated) {
+        String query = "(";
+        AtomicInteger index = new AtomicInteger(0);
+        for(Map.Entry<String, Type> entry : map.entrySet()){
+            if (entry.getValue().getTypeName().contains("Int") || entry.getValue().getTypeName().contains("Float")) {
+                if (index.get() == map.size() - 1) {
+                    query += separated[index.getAndIncrement()] + ")";
+                } else {
+                    query += separated[index.getAndIncrement()] + ", ";
+                }
+            } else {
+                if (separated[index.get()].contains("'")) {
+                    separated[index.get()] = separated[index.get()].replaceAll("'", "''");
+                }
+                if (index.get() == map.size() - 1) {
+                    query += "'" + separated[index.getAndIncrement()] + "')";
+                } else {
+                    query += "'" + separated[index.getAndIncrement()] + "', ";
+                }
+            }
+        }
+        return query;
     }
 
     private Type getType(String columnName) {
-        List types = new ArrayList<>(Arrays.asList("SMALLINT",
+        List types = new ArrayList<>(Arrays.asList(
                 "Boolean",
                 "Date",
                 "DateTime",
@@ -331,13 +405,13 @@ public class ClickHouseService {
                 "Int32",
                 "Int64",
                 "String"));
-        ChoiceDialog<String> choiceDialog = new ChoiceDialog<>("VARCHAR", types);
+        ChoiceDialog<String> choiceDialog = new ChoiceDialog<>(types.get(0), types);
         choiceDialog.setContentText("Wybierz typ danych dla kolumny " + columnName);
         choiceDialog.setHeaderText("Wybierz typ");
         choiceDialog.setTitle("Wybierz typ");
         Optional<String> typeResult = choiceDialog.showAndWait();
         if (typeResult.isPresent()) {
-            if (typeResult.get().equals("Fixedtring")) {
+            if (typeResult.get().equals("FixedString")) {
                 TextInputDialog sizeDialog = new TextInputDialog();
                 sizeDialog.setTitle("Podaj rozmiar");
                 sizeDialog.setContentText("Podaj rozmiar");
