@@ -368,7 +368,6 @@ public class ClickHouseService {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
 
-        final String[] line = {""};
 
 
         String tableName = null;
@@ -382,13 +381,17 @@ public class ClickHouseService {
         } else {
             throw new IllegalArgumentException("Nie podano nazwy");
         }
-        line[0] = bufferedReader.readLine();
+        final String[] line = {bufferedReader.readLine()};
+        System.out.println(line[0] + "###########################");
         if (line[0] == null) {
             throw new IllegalArgumentException("Plik jest pusty");
         }
         String[] columnsName = line[0].split(";");
         Map<String, Type> colTypes = new LinkedHashMap<>();
         columnsName = prepColsName(columnsName);
+        for(int i = 0; i < columnsName.length; i++){
+            System.out.println(columnsName[i]);
+        }
         for (int i = 0; i < columnsName.length; i++) {
             colTypes.put(columnsName[i], getType(columnsName[i]));
         }
@@ -440,6 +443,13 @@ public class ClickHouseService {
                 e.printStackTrace();
             }
             logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie pliku " + file.getName() + " do bazy ClickHouse\n");
+
+            try {
+                bufferedReader.close();
+                fileReader.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }).start();
     }
 

@@ -152,8 +152,9 @@ public class MainSceneController {
             alert.get().close();
             appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
             restartFirebirdService();
+
         });
-        appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird");
+        appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy CLickHouse do bazy Firebird (" + finalTableCount + " rekordów)");
         new Thread(task).start();
     }
 
@@ -240,7 +241,7 @@ public class MainSceneController {
         AtomicReference<Alert> alert = new AtomicReference<>();
         //alert.set(new Alert(Alert.AlertType.INFORMATION));
         task.setOnRunning(event -> {
-            appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy Firebird do bazy ClickHouse");
+            appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy Firebird do bazy ClickHouse (" + numberOfRows + " rekordów)");
             alert.set(new Alert(Alert.AlertType.INFORMATION));
             alert.get().setTitle("Trwa kopiowanie, proszę czekać");
             alert.get().setContentText("Trwa kopiowanie, proszę czekać. Po zakończeniu zostanie podany stosowny komunikat do pola z logami");
@@ -292,6 +293,7 @@ public class MainSceneController {
                     clearAndAppendToLogArea("Zły format typu danych");
                 }
             }
+            //refreshFirebirdTables();
         });
         Set<String> firebirdTabsNames = firebirdService.getAllTables();
 
@@ -321,6 +323,7 @@ public class MainSceneController {
                     appendToLogArea("Błąd podczas czytania pliku");
                 }
             }
+            refreshClickHouseTables();
         });
     }
 

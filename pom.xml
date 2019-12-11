@@ -26,11 +26,6 @@
 	</repositories>
 
 	<dependencies>
-		<dependency>
-			<groupId>com.github.virtusai</groupId>
-			<artifactId>clickhouse-client-java</artifactId>
-			<version>-SNAPSHOT</version>
-		</dependency>
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -53,12 +48,6 @@
 		<dependency>
 			<groupId>org.hibernate</groupId>
 			<artifactId>hibernate-entitymanager</artifactId>
-			<version>5.4.9.Final</version>
-		</dependency>
-		<!-- https://mvnrepository.com/artifact/org.hibernate/hibernate-core -->
-		<dependency>
-			<groupId>org.hibernate</groupId>
-			<artifactId>hibernate-core</artifactId>
 			<version>5.4.9.Final</version>
 		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.hibernate/hibernate-annotations -->

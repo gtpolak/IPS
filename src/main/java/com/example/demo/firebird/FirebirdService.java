@@ -29,7 +29,6 @@ public class FirebirdService {
         Set<String> tabsNames = new HashSet<>();
         Statement statement = fireBirdConnector.createStatement();
         try {
-            statement.closeOnCompletion();
             ResultSet resultSet = statement.executeQuery("select rdb$relation_name\n" +
                     "from rdb$relations\n" +
                     "where rdb$view_blr is null\n" +
@@ -37,6 +36,7 @@ public class FirebirdService {
             while (resultSet.next()) {
                 tabsNames.add(resultSet.getString(1).replaceAll(" ", ""));
             }
+            statement.close();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -232,33 +232,38 @@ public class FirebirdService {
                 pstmt = fireBirdConnector.getConnection().prepareStatement(insert.toString());
             } catch (SQLException e) {
                 e.printStackTrace();
+                return;
             }
             while (true) {
                 try {
                     if ((line[0] = bufferedReader.readLine()) == null) break;
                 } catch (IOException e) {
                     e.printStackTrace();
+                    return;
                 }
                 String[] separated = line[0].split(";");
                 AtomicInteger index = new AtomicInteger(0);
                 try {
                     for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
-
-                        if (separated[index.get()] == null || separated[index.get()].equals("")) {
-                            pstmt.setNull(index.get() + 1, Types.NULL);
-                            index.incrementAndGet();
-                            continue;
-                        }
                         switch (entry.getValue().getTypeName()) {
                             case "VARCHAR":
                             case "CHAR":
+                                if (separated[index.get()] == null || separated[index.get()].equals("")) {
+                                    separated[index.get()] = "null";
+                                }
                                 pstmt.setString(index.get() + 1, separated[index.get()]);
                                 break;
                             case "INTEGER":
                             case "SMALLINT":
+                                if (separated[index.get()] == null || separated[index.get()].equals("")) {
+                                    separated[index.get()] = "0";
+                                }
                                 pstmt.setInt(index.get() + 1, Integer.parseInt(separated[index.get()]));
                                 break;
                             case "BIGINT":
+                                if (separated[index.get()] == null || separated[index.get()].equals("")) {
+                                    separated[index.get()] = "0";
+                                }
                                 pstmt.setLong(index.get() + 1, Long.parseLong(separated[index.get()]));
                                 break;
                             case "DATE":
@@ -271,6 +276,9 @@ public class FirebirdService {
                                 pstmt.setFloat(index.get() + 1, Float.parseFloat(separated[index.get()]));
                                 break;
                             case "DOUBLE PRECISION":
+                                if (separated[index.get()] == null || separated[index.get()].equals("")) {
+                                    separated[index.get()] = "0";
+                                }
                                 pstmt.setDouble(index.get() + 1, Double.parseDouble(separated[index.get()]));
                                 break;
                             case "TIMESTAMP":
@@ -295,13 +303,16 @@ public class FirebirdService {
                     break;
                 } catch (NullPointerException e) {
                     e.printStackTrace();
+                    return;
                 }
             }
             try {
                 pstmt.executeBatch();
             } catch (SQLException e) {
+                e.printStackTrace();
                 logArea.clear();
                 logArea.appendText(LocalDateTime.now().toString() + " - Błąd podczas wstawiania danych z pliku " + file.getName() + "\n");
+                return;
             }
             try {
                 pstmt.close();
@@ -309,8 +320,15 @@ public class FirebirdService {
                 logArea.appendText(LocalDateTime.now().toString() + " - Błąd podczas zamykania połączenia\n");
             }
             logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie pliku " + file.getName() + " do bazy Firebird\n");
+            fireBirdConnector.close();
+            try {
+                bufferedReader.close();
+                fileReader.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            mainSceneController.refreshFirebirdTables();
         }).start();
-        fireBirdConnector.close();
     }
 
     private String prepareCreateTableStatement(String tableName, Map<String, Type> map) {
