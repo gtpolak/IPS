@@ -1,15 +1,15 @@
 package com.example.demo.firebird;
 
 import com.example.demo.models.Type;
+import com.example.demo.scenesControllers.MainSceneController;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
+import java.sql.Date;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -40,13 +40,6 @@ public class FirebirdService {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
-//        List<String> resultList = fireBirdConnector.getSession().createNativeQuery("select rdb$relation_name\n" +
-//                "from rdb$relations\n" +
-//                "where rdb$view_blr is null\n" +
-//                "and (rdb$system_flag is null or rdb$system_flag = 0)").list();
-//        //tabsNames = resultList.stream().map(s -> s.replaceAll(" ", "")).collect(Collectors.toSet());
-//        //fireBirdConnector.commitTransaction();
         return tabsNames;
     }
 
@@ -85,12 +78,6 @@ public class FirebirdService {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-
-//        List<Object[]> result = fireBirdConnector.getSession().createNativeQuery().list();
-//        result.forEach(objects -> {
-//            columnsNameAntTypes.put(objects[0].toString().replaceAll(" ", ""), new Type(convertToType(objects[1].toString()), objects[2].toString()));
-//        });
-//        fireBirdConnector.commitTransaction();
         return columnsNameAntTypes;
     }
 
@@ -179,20 +166,20 @@ public class FirebirdService {
         String query = "select * from " + tableName + " rows " + (copiedRows) + " to " + (copiedRows + sizeOfBatch - 1);
         ResultSet resultSet = statement.executeQuery(query);
         List<String[]> data = new ArrayList<>();
-        while(resultSet.next()){
+        while (resultSet.next()) {
             String[] row = new String[numberOfCols];
-            for(int i = 0; i < numberOfCols; i++){
-                row[i] = resultSet.getString(i+1);
+            for (int i = 0; i < numberOfCols; i++) {
+                row[i] = resultSet.getString(i + 1);
             }
             data.add(row);
         }
         return data;
     }
 
-    public void importCsv(File file, TextArea logArea) throws FileNotFoundException, IOException, SQLException, NullPointerException {
+    public void importCsv(File file, TextArea logArea, MainSceneController mainSceneController) throws FileNotFoundException, IOException, SQLException, NullPointerException {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
-        String line = "";
+        final String[] line = {""};
 
         String tableName = null;
         TextInputDialog dialog = new TextInputDialog();
@@ -205,11 +192,11 @@ public class FirebirdService {
         } else {
             throw new IllegalArgumentException("Nie podano nazwy");
         }
-        line = bufferedReader.readLine();
-        if(line == null){
+        line[0] = bufferedReader.readLine();
+        if (line[0] == null) {
             throw new IllegalArgumentException("Plik jest pusty");
         }
-        String[] columnsName = line.split(";");
+        String[] columnsName = line[0].split(";");
         columnsName = prepColsName(columnsName);
         Map<String, Type> colTypes = new LinkedHashMap<>();
         for (int i = 0; i < columnsName.length; i++) {
@@ -223,49 +210,107 @@ public class FirebirdService {
         Statement statement = fireBirdConnector.createStatement();
         statement.closeOnCompletion();
         statement.execute(createTableQuery);
-        logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName +"\n");
-        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie\n");
-        int resetConn = 1;
-        String queries = "";
-        while ((line = bufferedReader.readLine()) != null) {
-            String[] separated = line.split(";");
+        logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName + "\n");
+        mainSceneController.refreshFirebirdTables();
+        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie pliku " + file.getName() + " do bazy Firebird\n");
 
-            String query = "insert into " + tableName + " values (";
-            for(int i = 0; i < separated.length; i++){
-                if(separated[i].equals("") || separated[i] == null){
-                    query += "null";
-                } else if(isNumeric(separated[i])){
-                    query += separated[i];
-                } else {
-                    if(separated[i].contains("'")){
-                        separated[i] = separated[i].replaceAll("'", "''");
-                    }
-                    query += "'" + separated[i] + "'";
-                }
-                if(i != separated.length-1){
-                    query += ", ";
-                } else {
-                    query += ")";
-                }
-            }
-            queries += query + "; ";
-            if(resetConn%30 != 0){
-                resetConn++;
-                continue;
-            }
-            statement = fireBirdConnector.createStatement();
-            statement.closeOnCompletion();
-            try {
-                statement.execute(query);
-                queries = "";
-                resetConn = 1;
-            }catch (SQLException e){
-                e.printStackTrace();
-                System.out.println(query);
+
+        StringBuilder insert = new StringBuilder("insert into " + tableName + " values (");
+        int colIndex = 1;
+        for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
+            if (colIndex == colTypes.size()) {
+                insert.append("?)");
                 break;
             }
+            insert.append("?, ");
+            colIndex++;
         }
-        logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie\n");
+        new Thread(() -> {
+            int execBatch = 1;
+            PreparedStatement pstmt = null;
+            try {
+                pstmt = fireBirdConnector.getConnection().prepareStatement(insert.toString());
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            while (true) {
+                try {
+                    if ((line[0] = bufferedReader.readLine()) == null) break;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                String[] separated = line[0].split(";");
+                AtomicInteger index = new AtomicInteger(0);
+                try {
+                    for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
+
+                        if (separated[index.get()] == null || separated[index.get()].equals("")) {
+                            pstmt.setNull(index.get() + 1, Types.NULL);
+                            index.incrementAndGet();
+                            continue;
+                        }
+                        switch (entry.getValue().getTypeName()) {
+                            case "VARCHAR":
+                            case "CHAR":
+                                pstmt.setString(index.get() + 1, separated[index.get()]);
+                                break;
+                            case "INTEGER":
+                            case "SMALLINT":
+                                pstmt.setInt(index.get() + 1, Integer.parseInt(separated[index.get()]));
+                                break;
+                            case "BIGINT":
+                                pstmt.setLong(index.get() + 1, Long.parseLong(separated[index.get()]));
+                                break;
+                            case "DATE":
+                                pstmt.setDate(index.get() + 1, Date.valueOf(separated[index.get()]));
+                                break;
+                            case "TIME":
+                                pstmt.setTime(index.get() + 1, Time.valueOf(separated[index.get()]));
+                                break;
+                            case "FLOAT":
+                                pstmt.setFloat(index.get() + 1, Float.parseFloat(separated[index.get()]));
+                                break;
+                            case "DOUBLE PRECISION":
+                                pstmt.setDouble(index.get() + 1, Double.parseDouble(separated[index.get()]));
+                                break;
+                            case "TIMESTAMP":
+                                pstmt.setTimestamp(index.get() + 1, Timestamp.valueOf(separated[index.get()]));
+                                break;
+                        }
+                        index.incrementAndGet();
+                    }
+                    pstmt.addBatch();
+                    if (execBatch % 1000 != 0) {
+                        execBatch++;
+                        continue;
+                    }
+
+                    pstmt.executeBatch();
+
+                    execBatch = 1;
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                    logArea.clear();
+                    logArea.appendText("Błąd podczas wstawiania danych\n");
+                    break;
+                } catch (NullPointerException e) {
+                    e.printStackTrace();
+                }
+            }
+            try {
+                pstmt.executeBatch();
+            } catch (SQLException e) {
+                logArea.clear();
+                logArea.appendText(LocalDateTime.now().toString() + " - Błąd podczas wstawiania danych z pliku " + file.getName() + "\n");
+            }
+            try {
+                pstmt.close();
+            } catch (SQLException e) {
+                logArea.appendText(LocalDateTime.now().toString() + " - Błąd podczas zamykania połączenia\n");
+            }
+            logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie pliku " + file.getName() + " do bazy Firebird\n");
+        }).start();
+        fireBirdConnector.close();
     }
 
     private String prepareCreateTableStatement(String tableName, Map<String, Type> map) {
@@ -297,13 +342,10 @@ public class FirebirdService {
                 "INTEGER",
                 "FLOAT",
                 "DATE",
-                "TIME",
-                "CHAR",
                 "BIGINT",
                 "DOUBLE PRECISION",
                 "TIMESTAMP",
-                "VARCHAR",
-                "BLOB"));
+                "VARCHAR"));
         ChoiceDialog<String> choiceDialog = new ChoiceDialog<>("VARCHAR", types);
         choiceDialog.setContentText("Wybierz typ danych dla kolumny " + columnName);
         choiceDialog.setHeaderText("Wybierz typ");
@@ -351,41 +393,108 @@ public class FirebirdService {
     }
 
     public Map<String, Type> convertToFirebirdDataTypes(Map<String, Type> tableDesc) {
-        for(Map.Entry<String, Type> entry : tableDesc.entrySet()){
+        for (Map.Entry<String, Type> entry : tableDesc.entrySet()) {
             entry.setValue(getType(entry.getKey()));
         }
         return tableDesc;
     }
 
-    public void insertBatchData(List<String[]> data, Map<String, Type> firebirdType, String tableName) throws SQLException {
-        List<String> inserts = new ArrayList<>();
-        data.forEach(strings -> {
-            inserts.add(createInsertStatement(strings, firebirdType, tableName));
-        });
+    public void insertBatchData(List<String[]> data, Map<String, Type> colTypes, String tableName) throws SQLException {
+//        List<String> inserts = new ArrayList<>();
+//        data.forEach(strings -> {
+//            inserts.add(createInsertStatement(strings, colTypes, tableName));
+//        });
 
-        Statement statement = fireBirdConnector.createStatement();
-        for (String insert : inserts) {
-            statement.execute(insert);
+        StringBuilder insert = new StringBuilder("insert into " + tableName + " values (");
+        int colIndex = 1;
+        for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
+            if (colIndex == colTypes.size()) {
+                insert.append("?)");
+                break;
+            }
+            insert.append("?, ");
+            colIndex++;
         }
-        statement.close();
+
+        final PreparedStatement[] preparedStatement = {fireBirdConnector.getConnection().prepareStatement(insert.toString())};
+        data.forEach(colData -> {
+            try {
+                preparedStatement[0] = prepareInsertStmt(preparedStatement[0], colData, colTypes);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        preparedStatement[0].executeBatch();
+        preparedStatement[0].close();
+
+//        Statement statement = fireBirdConnector.createStatement();
+//        for (String insert : inserts) {
+//            statement.execute(insert);
+//        }
+//        statement.close();
+    }
+
+    private PreparedStatement prepareInsertStmt(PreparedStatement pstmt, String[] colData, Map<String, Type> colTypes) {
+        AtomicInteger index = new AtomicInteger(0);
+        for(Map.Entry<String, Type> entry : colTypes.entrySet()) {
+            try {
+                switch (entry.getValue().getTypeName()) {
+                    case "VARCHAR":
+                    case "CHAR":
+                        pstmt.setString(index.get() + 1, colData[index.get()]);
+                        break;
+                    case "INTEGER":
+                    case "SMALLINT":
+                        pstmt.setInt(index.get() + 1, Integer.parseInt(colData[index.get()]));
+                        break;
+                    case "BIGINT":
+                        pstmt.setLong(index.get() + 1, Long.parseLong(colData[index.get()]));
+                        break;
+                    case "DATE":
+                        pstmt.setDate(index.get() + 1, Date.valueOf(colData[index.get()]));
+                        break;
+                    case "TIME":
+                        pstmt.setTime(index.get() + 1, Time.valueOf(colData[index.get()]));
+                        break;
+                    case "FLOAT":
+                        pstmt.setFloat(index.get() + 1, Float.parseFloat(colData[index.get()]));
+                        break;
+                    case "DOUBLE PRECISION":
+                        pstmt.setDouble(index.get() + 1, Double.parseDouble(colData[index.get()]));
+                        break;
+                    case "TIMESTAMP":
+                        pstmt.setTimestamp(index.get() + 1, Timestamp.valueOf(colData[index.get()]));
+                        break;
+                }
+                index.incrementAndGet();
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+        try {
+            pstmt.addBatch();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return pstmt;
     }
 
     private String createInsertStatement(String[] strings, Map<String, Type> firebirdType, String tableName) {
         AtomicInteger index = new AtomicInteger(0);
         final String[] query = new String[]{"insert into " + tableName + " values ("};
-        for(Map.Entry<String, Type> entry : firebirdType.entrySet()){
-            if(entry.getValue().getTypeName().contains("INT") || entry.getValue().getTypeName().contains("FLOAT")
-                    || entry.getValue().getTypeName().contains("DOUBLE")){
-                if(index.get() == firebirdType.size()-1){
+        for (Map.Entry<String, Type> entry : firebirdType.entrySet()) {
+            if (entry.getValue().getTypeName().contains("INT") || entry.getValue().getTypeName().contains("FLOAT")
+                    || entry.getValue().getTypeName().contains("DOUBLE")) {
+                if (index.get() == firebirdType.size() - 1) {
                     query[0] += strings[index.getAndIncrement()] + ")";
                 } else {
                     query[0] += strings[index.getAndIncrement()] + ", ";
                 }
             } else {
-                if(strings[index.get()].contains("'")){
+                if (strings[index.get()].contains("'")) {
                     strings[index.get()] = strings[index.get()].replaceAll("'", "''");
                 }
-                if(index.get() == firebirdType.size()-1){
+                if (index.get() == firebirdType.size() - 1) {
                     query[0] += "'" + strings[index.getAndIncrement()] + "')";
                 } else {
                     query[0] += "'" + strings[index.getAndIncrement()] + "', ";

@@ -8,10 +8,8 @@ import org.joda.time.DateTime;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
+import java.sql.Date;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -143,13 +141,8 @@ public class ClickHouseService {
                 case "DATE":
                     entry.getValue().setTypeName("Date");
                     break;
-                case "TIME":
-                case "BLOB":
                 case "VARCHAR":
                     entry.getValue().setTypeName("String");
-                    break;
-                case "CHAR":
-                    entry.getValue().setTypeName("FixedString(" + entry.getValue().getTypeSize() + ")");
                     break;
                 case "DOUBLE PRECISION":
                     entry.getValue().setTypeName("Float64");
@@ -164,15 +157,91 @@ public class ClickHouseService {
         return columnNameAndType;
     }
 
-    public void insertBatchData(String tableName, Map<String, Type> colsTypes, List<String[]> data) throws SQLException {
-        String query = createInsertStatement(tableName, colsTypes, data);
+    public void insertBatchData(String tableName, Map<String, Type> colTypes, List<String[]> data) throws SQLException {
+        //String query = createInsertStatement(tableName, colTypes, data);
 
-        Statement statement = clickHouseConnection.getStatement();
-        statement.execute(query);
-        statement.close();
+        StringBuilder insert = new StringBuilder("insert into " + tableName + " values (");
+        int colIndex = 1;
+        for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
+            if (colIndex == colTypes.size()) {
+                insert.append("?)");
+                break;
+            }
+            insert.append("?, ");
+            colIndex++;
+        }
+
+        final PreparedStatement[] preparedStatement = {clickHouseConnection.getConnection().prepareStatement(insert.toString())};
+        data.forEach(colData -> {
+            try {
+                preparedStatement[0] = prepareInsertStmt(preparedStatement[0], colData, colTypes);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        preparedStatement[0].executeBatch();
+        preparedStatement[0].close();
+        clickHouseConnection.close();
+//        Statement statement = clickHouseConnection.getStatement();
+//        statement.execute(query);
+//        statement.close();
     }
 
-    public String createInsertStatement(String tableName, Map<String, Type> colsTypes, List<String[]> data){
+    private PreparedStatement prepareInsertStmt(PreparedStatement pstmt, String[] colData, Map<String, Type> colTypes) {
+        AtomicInteger index = new AtomicInteger(0);
+        for(Map.Entry<String, Type> entry : colTypes.entrySet()) {
+            try {
+                switch (entry.getValue().getTypeName()) {
+                    case "String":
+                        if(colData[index.get()] == null || colData[index.get()].equals("")){
+                            colData[index.get()] = "null";
+                        }
+                        pstmt.setString(index.get() + 1, String.valueOf(colData[index.get()]));
+                        break;
+                    case "Int32":
+                    case "Int8":
+                    case "Int16":
+                    case "Int64":
+                    case "UInt32":
+                    case "UInt8":
+                    case "UInt16":
+                    case "UInt64":
+                        if(colData[index.get()] == null || colData[index.get()].equals("")){
+                            colData[index.get()] = "0";
+                        }
+                        pstmt.setInt(index.get() + 1, Integer.parseInt(colData[index.get()]));
+                        break;
+                    case "Float32":
+                    case "Float64":
+                        if(colData[index.get()] == null || colData[index.get()].equals("")){
+                            colData[index.get()] = "0";
+                        }
+                        pstmt.setFloat(index.get() + 1, Float.parseFloat(colData[index.get()]));
+                        break;
+                    case "DateTime":
+                        pstmt.setTimestamp(index.get() + 1, Timestamp.valueOf(colData[index.get()]));
+                        break;
+                    case "Boolean":
+                        pstmt.setBoolean(index.get()+1, Boolean.parseBoolean(colData[index.get()]));
+                        break;
+                    case "Date":
+                        pstmt.setDate(index.get()+1, Date.valueOf(colData[index.get()]));
+                        break;
+                }
+                index.incrementAndGet();
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+        try {
+            pstmt.addBatch();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return pstmt;
+    }
+
+    public String createInsertStatement(String tableName, Map<String, Type> colsTypes, List<String[]> data) {
         final String[] query = {"insert into " + tableName + " values "};
         data.forEach(strings -> {
             query[0] += createInsertStatement(strings, colsTypes) + " ";
@@ -190,30 +259,41 @@ public class ClickHouseService {
     }
 
     private String createInsertStatement(String[] strings, Map<String, Type> firebirdType) {
-        AtomicInteger index = new AtomicInteger(0);
-        final String[] query = new String[]{"("};
-        for (Map.Entry<String, Type> entry : firebirdType.entrySet()) {
-            if (entry.getValue().getTypeName().contains("Int") || entry.getValue().getTypeName().contains("Float")) {
-                if (index.get() == firebirdType.size() - 1) {
-                    query[0] += strings[index.getAndIncrement()] + ")";
+        try {
+            AtomicInteger index = new AtomicInteger(0);
+            final String[] query = new String[]{"("};
+            for (Map.Entry<String, Type> entry : firebirdType.entrySet()) {
+                if (entry.getValue().getTypeName().contains("Int") || entry.getValue().getTypeName().contains("Float")) {
+                    if (strings[index.get()] == null || strings[index.get()].equals("")) {
+                        strings[index.get()] = "0";
+                    }
+                    if (index.get() == firebirdType.size() - 1) {
+                        query[0] += strings[index.getAndIncrement()] + ")";
+                    } else {
+                        query[0] += strings[index.getAndIncrement()] + ", ";
+                    }
                 } else {
-                    query[0] += strings[index.getAndIncrement()] + ", ";
-                }
-            } else {
-                if (strings[index.get()].contains("'")) {
-                    strings[index.get()] = strings[index.get()].replaceAll("'", "''");
-                }
-                if (entry.getValue().getTypeName().equals("DateTime")) {
-                    strings[index.get()] = strings[index.get()].substring(0, 19);
-                }
-                if (index.get() == firebirdType.size() - 1) {
-                    query[0] += "'" + strings[index.getAndIncrement()] + "')";
-                } else {
-                    query[0] += "'" + strings[index.getAndIncrement()] + "', ";
+                    if (strings[index.get()] == null || strings[index.get()].equals("")) {
+                        strings[index.get()] = "null";
+                    }
+                    if (strings[index.get()].contains("'")) {
+                        strings[index.get()] = strings[index.get()].replaceAll("'", "''");
+                    }
+                    if (entry.getValue().getTypeName().equals("DateTime")) {
+                        strings[index.get()] = strings[index.get()].substring(0, 19);
+                    }
+                    if (index.get() == firebirdType.size() - 1) {
+                        query[0] += "'" + strings[index.getAndIncrement()] + "')";
+                    } else {
+                        query[0] += "'" + strings[index.getAndIncrement()] + "', ";
+                    }
                 }
             }
+            return query[0];
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
         }
-        return query[0];
     }
 
     private String createInsertStatement(String[] strings, Map<String, Type> firebirdType, String tableName) {
@@ -265,7 +345,7 @@ public class ClickHouseService {
     }
 
     public List<String[]> getBatchData(String tableName, int copyCount, int batchSize, int size) throws SQLException {
-        String query = "select * from " + tableName + " limit " + copyCount + ", " + (copyCount + batchSize);
+        String query = "select * from " + tableName + " limit " + copyCount + ", " + batchSize;
         Statement statement = clickHouseConnection.getStatement();
         statement.closeOnCompletion();
         ResultSet resultSet = statement.executeQuery(query);
@@ -303,7 +383,7 @@ public class ClickHouseService {
             throw new IllegalArgumentException("Nie podano nazwy");
         }
         line[0] = bufferedReader.readLine();
-        if(line[0] == null){
+        if (line[0] == null) {
             throw new IllegalArgumentException("Plik jest pusty");
         }
         String[] columnsName = line[0].split(";");
@@ -319,7 +399,7 @@ public class ClickHouseService {
         statement[0].closeOnCompletion();
         statement[0].execute(query);
         logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName + "\n");
-        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie\n");
+        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie pliku " + file.getName() + " do bazy ClickHoue\n");
 
 
         final String[] insertQuery = {"insert into " + tableName + " values "};
@@ -333,7 +413,7 @@ public class ClickHouseService {
                     e.printStackTrace();
                 }
                 String[] separated = line[0].split(";");
-                if(a%1000 != 0){
+                if (a % 1000 != 0) {
                     insertQuery[0] += prepareInsert(colTypes, separated) + " ";
                     a++;
                     continue;
@@ -342,7 +422,7 @@ public class ClickHouseService {
                     statement[0] = clickHouseConnection.getStatement();
                     statement[0].closeOnCompletion();
                     statement[0].execute(insertQuery[0]);
-                } catch (SQLException e){
+                } catch (SQLException e) {
                     e.printStackTrace();
                 }
                 insertQuery[0] = "insert into " + finalTableName + " values ";
@@ -359,14 +439,14 @@ public class ClickHouseService {
             } catch (SQLException e) {
                 e.printStackTrace();
             }
-            logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie\n");
+            logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie pliku " + file.getName() + " do bazy ClickHouse\n");
         }).start();
     }
 
     private String prepareInsert(Map<String, Type> map, String[] separated) {
         String query = "(";
         AtomicInteger index = new AtomicInteger(0);
-        for(Map.Entry<String, Type> entry : map.entrySet()){
+        for (Map.Entry<String, Type> entry : map.entrySet()) {
             if (entry.getValue().getTypeName().contains("Int") || entry.getValue().getTypeName().contains("Float")) {
                 if (index.get() == map.size() - 1) {
                     query += separated[index.getAndIncrement()] + ")";
@@ -392,8 +472,6 @@ public class ClickHouseService {
                 "Boolean",
                 "Date",
                 "DateTime",
-                "Enum",
-                "FixedString",
                 "Float32",
                 "Float64",
                 "UInt8",
