@@ -5,11 +5,8 @@ import ru.yandex.clickhouse.ClickHouseDataSource;
 import ru.yandex.clickhouse.settings.ClickHouseProperties;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
 
 @Component
 public class ClickHouseConnection {
@@ -39,12 +36,10 @@ public class ClickHouseConnection {
         return getConnection().createStatement();
     }
 
-    public void close() {
-        try {
+    public void close() throws SQLException {
+        if (connection != null) {
             connection.close();
             connection = null;
-        } catch (SQLException e) {
-            e.printStackTrace();
         }
     }
 }

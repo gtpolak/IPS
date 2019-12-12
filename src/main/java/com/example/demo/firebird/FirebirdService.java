@@ -3,15 +3,12 @@ package com.example.demo.firebird;
 import com.example.demo.models.Type;
 import com.example.demo.scenesControllers.MainSceneController;
 import javafx.scene.control.ChoiceDialog;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
 import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.sql.*;
 import java.sql.Date;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -25,7 +22,7 @@ public class FirebirdService {
         this.fireBirdConnector = fireBirdConnector;
     }
 
-    public Set<String> getAllTables() {
+    public Set<String> getAllTables() throws SQLException {
         Set<String> tabsNames = new HashSet<>();
         Statement statement = fireBirdConnector.createStatement();
         try {
@@ -43,7 +40,7 @@ public class FirebirdService {
         return tabsNames;
     }
 
-    public Map<String, Type> getColumnNameAndTypeFromTable(String tableName) {
+    public Map<String, Type> getColumnNameAndTypeFromTable(String tableName) throws SQLException {
         tableName = tableName.toUpperCase();
         Map<String, Type> columnsNameAntTypes = new LinkedHashMap<>();
         //fireBirdConnector.beginTransaction();
@@ -68,16 +65,14 @@ public class FirebirdService {
                 "ORDER BY\n" +
                 "  R.RDB$RELATION_NAME,\n" +
                 "  R.RDB$FIELD_POSITION";
-        try {
-            Statement statement = fireBirdConnector.createStatement();
-            statement.closeOnCompletion();
-            ResultSet resultSet = statement.executeQuery(query);
-            while (resultSet.next()) {
-                columnsNameAntTypes.put(resultSet.getString(1).replaceAll(" ", ""), new Type(convertToType(resultSet.getString(2)), Integer.valueOf(resultSet.getString(3))));
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+
+        Statement statement = fireBirdConnector.createStatement();
+        statement.closeOnCompletion();
+        ResultSet resultSet = statement.executeQuery(query);
+        while (resultSet.next()) {
+            columnsNameAntTypes.put(resultSet.getString(1).replaceAll(" ", ""), new Type(convertToType(resultSet.getString(2)), Integer.valueOf(resultSet.getString(3))));
         }
+
         return columnsNameAntTypes;
     }
 
@@ -140,14 +135,13 @@ public class FirebirdService {
             statement.closeOnCompletion();
             statement.execute(sql);
         } catch (Exception e) {
-            System.out.println(e.getMessage());
             e.printStackTrace();
             return false;
         }
         return true;
     }
 
-    public int getRowsCount(String tableName) {
+    public int getRowsCount(String tableName) throws SQLException {
         Statement statement = fireBirdConnector.createStatement();
         try {
             statement.closeOnCompletion();
@@ -176,12 +170,12 @@ public class FirebirdService {
         return data;
     }
 
-    public void importCsv(File file, TextArea logArea, MainSceneController mainSceneController) throws FileNotFoundException, IOException, SQLException, NullPointerException {
+    public void importCsv(File file, MainSceneController mainSceneController) throws IOException, NullPointerException {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
         final String[] line = {""};
 
-        String tableName = null;
+        String tableName;
         TextInputDialog dialog = new TextInputDialog();
         dialog.setTitle("Podaj nazwe dla tabeli");
         dialog.setHeaderText("Tworzenie nowej tabeli");
@@ -192,11 +186,25 @@ public class FirebirdService {
         } else {
             throw new IllegalArgumentException("Nie podano nazwy");
         }
+
+        String finalTableName = tableName;
+        try {
+            if (getAllTables().stream().anyMatch(s -> s.equals(finalTableName))) {
+                mainSceneController.clearAndAppendToLogArea("Tabela " + tableName + " już istnieje w bazie Firebird");
+                return;
+            }
+        } catch (SQLException e) {
+            mainSceneController.clearAndAppendToLogArea("Błąd podczas pobierania danych z bazy Firebird");
+            return;
+        }
+
+        String separator = getSeparator();
+
         line[0] = bufferedReader.readLine();
         if (line[0] == null) {
             throw new IllegalArgumentException("Plik jest pusty");
         }
-        String[] columnsName = line[0].split(";");
+        String[] columnsName = line[0].split(separator);
         columnsName = prepColsName(columnsName);
         Map<String, Type> colTypes = new LinkedHashMap<>();
         for (int i = 0; i < columnsName.length; i++) {
@@ -205,14 +213,16 @@ public class FirebirdService {
 
         String createTableQuery = prepareCreateTableStatement(tableName, colTypes);
 
-        System.out.println(createTableQuery);
-
-        Statement statement = fireBirdConnector.createStatement();
-        statement.closeOnCompletion();
-        statement.execute(createTableQuery);
-        logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName + "\n");
+        try {
+            Statement statement = fireBirdConnector.createStatement();
+            statement.closeOnCompletion();
+            statement.execute(createTableQuery);
+        } catch (SQLException e){
+            mainSceneController.clearAndAppendToLogArea("Błąd podczas tworzenia tabeli w bazie. Wygenerowany SQL:\n" + createTableQuery);
+        }
+        mainSceneController.appendToLogArea("Utworzono tabelę " + tableName + "\n");
         mainSceneController.refreshFirebirdTables();
-        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie pliku " + file.getName() + " do bazy Firebird\n");
+        mainSceneController.appendToLogArea("Rozpoczęto importowanie pliku " + file.getName() + " do bazy Firebird\n");
 
 
         StringBuilder insert = new StringBuilder("insert into " + tableName + " values (");
@@ -241,18 +251,22 @@ public class FirebirdService {
                     e.printStackTrace();
                     return;
                 }
-                String[] separated = line[0].split(";");
+                String[] separated = line[0].split(separator);
                 AtomicInteger index = new AtomicInteger(0);
                 try {
                     for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
                         switch (entry.getValue().getTypeName()) {
                             case "VARCHAR":
-                            case "CHAR":
                                 if (separated[index.get()] == null || separated[index.get()].equals("")) {
                                     separated[index.get()] = "null";
                                 }
                                 pstmt.setString(index.get() + 1, separated[index.get()]);
                                 break;
+                            case "CHAR":
+                                if (separated[index.get()] == null || separated[index.get()].equals("")) {
+                                    separated[index.get()] = "0";
+                                }
+                                pstmt.setNString(index.get() + 1, separated[index.get()]);
                             case "INTEGER":
                             case "SMALLINT":
                                 if (separated[index.get()] == null || separated[index.get()].equals("")) {
@@ -298,8 +312,7 @@ public class FirebirdService {
                     execBatch = 1;
                 } catch (SQLException e) {
                     e.printStackTrace();
-                    logArea.clear();
-                    logArea.appendText("Błąd podczas wstawiania danych\n");
+                    mainSceneController.clearAndAppendToLogArea("Błąd podczas wstawiania danych\n");
                     break;
                 } catch (NullPointerException e) {
                     e.printStackTrace();
@@ -310,17 +323,16 @@ public class FirebirdService {
                 pstmt.executeBatch();
             } catch (SQLException e) {
                 e.printStackTrace();
-                logArea.clear();
-                logArea.appendText(LocalDateTime.now().toString() + " - Błąd podczas wstawiania danych z pliku " + file.getName() + "\n");
+                mainSceneController.clearAndAppendToLogArea("Błąd podczas wstawiania danych z pliku " + file.getName() + "\n");
                 return;
             }
             try {
                 pstmt.close();
             } catch (SQLException e) {
-                logArea.appendText(LocalDateTime.now().toString() + " - Błąd podczas zamykania połączenia\n");
+                mainSceneController.clearAndAppendToLogArea("Błąd podczas zamykania połączenia\n");
             }
-            logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie pliku " + file.getName() + " do bazy Firebird\n");
-            fireBirdConnector.close();
+            mainSceneController.appendToLogArea("Zakończono importowanie pliku " + file.getName() + " do bazy Firebird\n");
+
             try {
                 bufferedReader.close();
                 fileReader.close();
@@ -329,6 +341,19 @@ public class FirebirdService {
             }
             mainSceneController.refreshFirebirdTables();
         }).start();
+    }
+
+    private String getSeparator() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Podaj separator");
+        dialog.setHeaderText("Wpsz separator dla kolumn z csv");
+        dialog.setContentText("Wpisz znak jakim są dzielone kolumny w pliku");
+        Optional<String> result = dialog.showAndWait();
+        if (result.isPresent()) {
+            return result.get();
+        } else {
+            throw new IllegalArgumentException("Nie podano separatora");
+        }
     }
 
     private String prepareCreateTableStatement(String tableName, Map<String, Type> map) {
@@ -454,7 +479,7 @@ public class FirebirdService {
 
     private PreparedStatement prepareInsertStmt(PreparedStatement pstmt, String[] colData, Map<String, Type> colTypes) {
         AtomicInteger index = new AtomicInteger(0);
-        for(Map.Entry<String, Type> entry : colTypes.entrySet()) {
+        for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
             try {
                 switch (entry.getValue().getTypeName()) {
                     case "VARCHAR":
@@ -485,7 +510,7 @@ public class FirebirdService {
                         break;
                 }
                 index.incrementAndGet();
-            } catch (Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
@@ -522,7 +547,7 @@ public class FirebirdService {
         return query[0];
     }
 
-    public void closeConnection() {
+    public void closeConnection() throws SQLException {
         fireBirdConnector.close();
     }
 }

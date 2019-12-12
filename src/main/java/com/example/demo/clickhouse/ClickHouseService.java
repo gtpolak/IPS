@@ -1,21 +1,19 @@
 package com.example.demo.clickhouse;
 
 import com.example.demo.models.Type;
+import com.example.demo.scenesControllers.MainSceneController;
 import javafx.scene.control.ChoiceDialog;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TextInputDialog;
-import org.joda.time.DateTime;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
-import java.sql.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.sql.Date;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.time.Instant;
+import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -29,24 +27,19 @@ public class ClickHouseService {
         this.clickHouseConnection = clickHouseConnection;
     }
 
-    public Set<String> getAllTables() {
+    public Set<String> getAllTables() throws SQLException {
         Set<String> dbsList = new LinkedHashSet<>();
-        try {
+        Connection conn = clickHouseConnection.getConnection();
 
-            Connection conn = clickHouseConnection.getConnection();
-
-            Statement stmt = conn.createStatement();
-            String sql = "show tables";//
-            ResultSet rs = stmt.executeQuery(sql);
-            while (rs.next()) {
-                dbsList.add(rs.getString(1));
-            }
-            conn.commit();
-            rs.close();
-            stmt.close();
-        } catch (Exception e) {
-            return null;
+        Statement stmt = conn.createStatement();
+        String sql = "show tables";//
+        ResultSet rs = stmt.executeQuery(sql);
+        while (rs.next()) {
+            dbsList.add(rs.getString(1));
         }
+        conn.commit();
+        rs.close();
+        stmt.close();
         return dbsList;
     }
 
@@ -61,20 +54,17 @@ public class ClickHouseService {
     }
 
     public boolean createTable(String tableName, Map<String, Type> columnNameAndType) {
+        columnNameAndType = convertToClickHouseTypes(columnNameAndType);
+
+        String sql = prepareCreateTableStatement(tableName, columnNameAndType);
+
+        Connection connection = clickHouseConnection.getConnection();
         try {
-
-            columnNameAndType = convertToClickHouseTypes(columnNameAndType);
-
-            String sql = prepareCreateTableStatement(tableName, columnNameAndType);
-
-            Connection connection = clickHouseConnection.getConnection();
-
             Statement statement = connection.createStatement();
             statement.executeQuery(sql);
 
-            connection.commit();
             statement.close();
-        } catch (Exception e) {
+        } catch (SQLException e){
             e.printStackTrace();
             return false;
         }
@@ -121,10 +111,6 @@ public class ClickHouseService {
 
     public Map<String, Type> convertToClickHouseTypes(Map<String, Type> columnNameAndType) {
         for (Map.Entry<String, Type> entry : columnNameAndType.entrySet()) {
-            if (entry.getValue().getTypeName().equals("CHAR") && entry.getValue().getTypeSize().equals("1")) {
-                columnNameAndType.get(entry.getKey()).setTypeName("Boolean");
-                continue;
-            }
             switch (entry.getValue().getTypeName()) {
                 case "SMALLINT":
                     entry.getValue().setTypeName("Int16");
@@ -149,6 +135,13 @@ public class ClickHouseService {
                     break;
                 case "TIMESTAMP":
                     entry.getValue().setTypeName("DateTime");
+                    break;
+                case "CHAR":
+                    if (entry.getValue().getTypeSize() == 1) {
+                        entry.getValue().setTypeName("Boolean");
+                        break;
+                    }
+                    entry.getValue().setTypeName("String");
                     break;
                 default:
                     throw new IllegalArgumentException("Błąd podczas tłumaczenia typu danych z firebird do Clickhouse");
@@ -181,19 +174,15 @@ public class ClickHouseService {
         });
         preparedStatement[0].executeBatch();
         preparedStatement[0].close();
-        clickHouseConnection.close();
-//        Statement statement = clickHouseConnection.getStatement();
-//        statement.execute(query);
-//        statement.close();
     }
 
     private PreparedStatement prepareInsertStmt(PreparedStatement pstmt, String[] colData, Map<String, Type> colTypes) {
         AtomicInteger index = new AtomicInteger(0);
-        for(Map.Entry<String, Type> entry : colTypes.entrySet()) {
+        for (Map.Entry<String, Type> entry : colTypes.entrySet()) {
             try {
                 switch (entry.getValue().getTypeName()) {
                     case "String":
-                        if(colData[index.get()] == null || colData[index.get()].equals("")){
+                        if (colData[index.get()] == null || colData[index.get()].equals("")) {
                             colData[index.get()] = "null";
                         }
                         pstmt.setString(index.get() + 1, String.valueOf(colData[index.get()]));
@@ -206,30 +195,48 @@ public class ClickHouseService {
                     case "UInt8":
                     case "UInt16":
                     case "UInt64":
-                        if(colData[index.get()] == null || colData[index.get()].equals("")){
-                            colData[index.get()] = "0";
+                        if (colData[index.get()] == null || colData[index.get()].equals("")) {
+                            pstmt.setFloat(index.get() + 1, 0);
+                            break;
                         }
                         pstmt.setInt(index.get() + 1, Integer.parseInt(colData[index.get()]));
                         break;
                     case "Float32":
                     case "Float64":
-                        if(colData[index.get()] == null || colData[index.get()].equals("")){
-                            colData[index.get()] = "0";
+                        if (colData[index.get()] == null || colData[index.get()].equals("")) {
+                            pstmt.setFloat(index.get() + 1, 0);
+                            break;
                         }
                         pstmt.setFloat(index.get() + 1, Float.parseFloat(colData[index.get()]));
                         break;
                     case "DateTime":
+                        if (colData[index.get()] == null || colData[index.get()].equals("")) {
+                            pstmt.setTimestamp(index.get() + 1, Timestamp.valueOf(LocalDateTime.now()));
+                            break;
+                        }
                         pstmt.setTimestamp(index.get() + 1, Timestamp.valueOf(colData[index.get()]));
                         break;
                     case "Boolean":
-                        pstmt.setBoolean(index.get()+1, Boolean.parseBoolean(colData[index.get()]));
+                        if (colData[index.get()] == null || colData[index.get()].equals("")) {
+                            pstmt.setBoolean(index.get() + 1, false);
+                            break;
+                        }
+                        if (colData[index.get()].equals("0")) {
+                            pstmt.setBoolean(index.get() + 1, false);
+                        } else {
+                            pstmt.setBoolean(index.get() + 1, true);
+                        }
                         break;
                     case "Date":
-                        pstmt.setDate(index.get()+1, Date.valueOf(colData[index.get()]));
+                        if (colData[index.get()] == null || colData[index.get()].equals("")) {
+                            pstmt.setDate(index.get() + 1, Date.valueOf(LocalDate.now()));
+                            break;
+                        }
+                        pstmt.setDate(index.get() + 1, Date.valueOf(colData[index.get()]));
                         break;
                 }
                 index.incrementAndGet();
-            } catch (Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
@@ -360,15 +367,15 @@ public class ClickHouseService {
         return data;
     }
 
-    public void closeConnection() {
+    public void closeConnection() throws SQLException {
         clickHouseConnection.close();
     }
 
-    public void importCsv(File file, TextArea logArea) throws IOException, SQLException {
+    public void importCsv(File file, MainSceneController mainSceneController) throws IOException {
         FileReader fileReader = new FileReader(file);
         BufferedReader bufferedReader = new BufferedReader(fileReader);
 
-
+        String lineSeparator = getSeparator();
 
         String tableName = null;
         TextInputDialog dialog = new TextInputDialog();
@@ -382,27 +389,29 @@ public class ClickHouseService {
             throw new IllegalArgumentException("Nie podano nazwy");
         }
         final String[] line = {bufferedReader.readLine()};
-        System.out.println(line[0] + "###########################");
         if (line[0] == null) {
             throw new IllegalArgumentException("Plik jest pusty");
         }
-        String[] columnsName = line[0].split(";");
+        String[] columnsName = line[0].split(lineSeparator);
         Map<String, Type> colTypes = new LinkedHashMap<>();
         columnsName = prepColsName(columnsName);
-        for(int i = 0; i < columnsName.length; i++){
-            System.out.println(columnsName[i]);
+        for (int i = 0; i < columnsName.length; i++) {
         }
         for (int i = 0; i < columnsName.length; i++) {
             colTypes.put(columnsName[i], getType(columnsName[i]));
         }
         String query = prepareCreateTableStatement(tableName, colTypes);
-        System.out.println(query);
-
-        final Statement[] statement = {clickHouseConnection.getStatement()};
-        statement[0].closeOnCompletion();
-        statement[0].execute(query);
-        logArea.appendText(LocalDateTime.now().toString() + " - Utworzono tabelę " + tableName + "\n");
-        logArea.appendText(LocalDateTime.now().toString() + " - rozpoczęto importowanie pliku " + file.getName() + " do bazy ClickHoue\n");
+        final Statement[] statement;
+        try {
+            statement = new Statement[]{clickHouseConnection.getStatement()};
+            statement[0].closeOnCompletion();
+            statement[0].execute(query);
+        } catch (SQLException e) {
+            mainSceneController.clearAndAppendToLogArea("Błąd podczas tworzenia tabeli. Wygenerowany SQL: \n" + query);
+            return;
+        }
+        mainSceneController.appendToLogArea("Utworzono tabelę " + tableName + "\n");
+        mainSceneController.appendToLogArea("Rozpoczęto importowanie pliku " + file.getName() + " do bazy ClickHoue\n");
 
 
         final String[] insertQuery = {"insert into " + tableName + " values "};
@@ -415,7 +424,7 @@ public class ClickHouseService {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-                String[] separated = line[0].split(";");
+                String[] separated = line[0].split(lineSeparator);
                 if (a % 1000 != 0) {
                     insertQuery[0] += prepareInsert(colTypes, separated) + " ";
                     a++;
@@ -442,15 +451,29 @@ public class ClickHouseService {
             } catch (SQLException e) {
                 e.printStackTrace();
             }
-            logArea.appendText(LocalDateTime.now().toString() + " - zakończono importowanie pliku " + file.getName() + " do bazy ClickHouse\n");
+            mainSceneController.appendToLogArea("Zakończono importowanie pliku " + file.getName() + " do bazy ClickHouse\n");
 
             try {
                 bufferedReader.close();
                 fileReader.close();
             } catch (IOException e) {
+                mainSceneController.appendToLogArea("Błąd podczas zamykania pliku");
                 e.printStackTrace();
             }
         }).start();
+    }
+
+    private String getSeparator() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Podaj separator");
+        dialog.setHeaderText("Wpsz separator dla kolumn z csv");
+        dialog.setContentText("Wpisz znak jakim są dzielone kolumny w pliku");
+        Optional<String> result = dialog.showAndWait();
+        if (result.isPresent()) {
+            return result.get();
+        } else {
+            throw new IllegalArgumentException("Nie podano separatora");
+        }
     }
 
     private String prepareInsert(Map<String, Type> map, String[] separated) {
@@ -502,7 +525,7 @@ public class ClickHouseService {
             if (typeResult.get().equals("FixedString")) {
                 TextInputDialog sizeDialog = new TextInputDialog();
                 sizeDialog.setTitle("Podaj rozmiar");
-                sizeDialog.setContentText("Podaj rozmiar");
+                sizeDialog.setContentText("Podaj rozmiar dla " + columnName);
                 Optional<String> sizeResult = sizeDialog.showAndWait();
                 if (sizeResult.isPresent()) {
                     return new Type(typeResult.get(), Integer.valueOf(sizeResult.get()));
