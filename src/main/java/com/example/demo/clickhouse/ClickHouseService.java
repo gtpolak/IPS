@@ -388,6 +388,20 @@ public class ClickHouseService {
         } else {
             throw new IllegalArgumentException("Nie podano nazwy");
         }
+
+        try {
+            String finalTableName1 = tableName;
+            if(getAllTables().stream().anyMatch(s -> s.equals(finalTableName1))){
+                mainSceneController.clearAndAppendToLogArea("Tabela " + tableName + " już istnieje w bazie ClickHouse");
+                return;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            mainSceneController.clearAndAppendToLogArea("Błąd podczas pobierania nazw tabel z bazy ClickHouse");
+            return;
+        }
+
+
         final String[] line = {bufferedReader.readLine()};
         if (line[0] == null) {
             throw new IllegalArgumentException("Plik jest pusty");
