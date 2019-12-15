@@ -91,3 +91,16 @@ Aplikacja za pomocą paneli będzie miała możliwość wysyłania i odbierania 
 ## Diagramy UML
 
 ### Diagram przypadków użycia 
+
+![Image of Yaktocat](img/DiagramPrzypadkówUżycia.PNG)
+
+## Diagram aktywności
+
+![Image of Yaktocat](img/KopiowanieDanych.PNG)
+
+
+![Image of Yaktocat](img/UsuwanieTabeli.PNG)
+
+![Image of Yaktocat](img/ImportowaniePliku.PNG)
+
+![Image of Yaktocat](img/DiagramSekwencji.PNG)
