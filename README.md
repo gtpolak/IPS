@@ -9,6 +9,8 @@
 - [Wymagania](#wymagania)
 - [Zalecenia](#zalecenia)
 - [Przepływ informacji w środowisku systemu](#przepływ-informacji-w-środowisku-systemu)
+- [Diagramy UML](#diagramy-uml)
+
 
 
 ##	Zespół projektowy
