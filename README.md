@@ -70,6 +70,8 @@ ___
 
 Jako, że aplikacja skupia się na testowaniu wydajności systemów bazodanowych, dane powinny być spójne, żeby aplikacja mogła działać poprawnie.
 
+___
+
 ### 	Zalecenia
 
 Pierwsza linia w pliku .csv jest odczytywana jako nazwy dla kolumn w tabeli, która zostanie utworzona dla danych z pliku.
@@ -77,6 +79,8 @@ Pierwsza linia w pliku .csv jest odczytywana jako nazwy dla kolumn w tabeli, kt�
 Po zakończonej operacji, w którą zaangażowana była baza Firebird, zaleca się aby od nowa uruchomić aplikację. 
 
 Jest to spowodowane tym, że baza Firebird, pomimo zakończenia operacji, przy próbie wykonania następnej operacji, Firebird podaje komunikat, że wcześniejsza operacja nie została jeszcze zakończona. 
+
+___
 
 ### Przepływ informacji w środowisku systemu
 
