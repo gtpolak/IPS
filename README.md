@@ -87,3 +87,7 @@ ___
 Przepływ informacji będzie odbywał się za pomocą bazy danych i serwera. 
 
 Aplikacja za pomocą paneli będzie miała możliwość wysyłania i odbierania zapytań bazodanowych.
+
+## Diagramy UML
+
+### Diagram przypadków użycia 
