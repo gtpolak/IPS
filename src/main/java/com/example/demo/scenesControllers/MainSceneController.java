@@ -158,7 +158,6 @@ public class MainSceneController {
         task.setOnSucceeded(event -> {
             alert.get().close();
             appendToLogArea("Zakończono kopiowanie tabeli " + tableName + " z bazy ClickHouse do bazy Firebird");
-            restartFirebirdService();
         });
         appendToLogArea("Rozpoczęto kopiowanie tabeli " + tableName + " z bazy ClickHouse do bazy Firebird (" + finalTableCount + " rekordów)");
         new Thread(task).start();
@@ -281,7 +280,6 @@ public class MainSceneController {
         });
         task.setOnSucceeded(event -> {
             alert.get().close();
-            restartFirebirdService();
         });
         new Thread(task).start();
     }

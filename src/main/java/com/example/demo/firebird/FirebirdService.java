@@ -340,6 +340,12 @@ public class FirebirdService {
                 e.printStackTrace();
             }
             mainSceneController.refreshFirebirdTables();
+            try {
+                fireBirdConnector.close();
+            } catch (SQLException e) {
+                e.printStackTrace();
+                mainSceneController.appendToLogArea("Błąd podczas zamykiania połączenia z bazą Firebird. Uruchom aplikację od nowa");
+            }
         }).start();
     }
 
@@ -443,10 +449,6 @@ public class FirebirdService {
     }
 
     public void insertBatchData(List<String[]> data, Map<String, Type> colTypes, String tableName) throws SQLException {
-//        List<String> inserts = new ArrayList<>();
-//        data.forEach(strings -> {
-//            inserts.add(createInsertStatement(strings, colTypes, tableName));
-//        });
 
         StringBuilder insert = new StringBuilder("insert into " + tableName + " values (");
         int colIndex = 1;
@@ -469,7 +471,7 @@ public class FirebirdService {
         });
         preparedStatement[0].executeBatch();
         preparedStatement[0].close();
-
+        fireBirdConnector.close();
 //        Statement statement = fireBirdConnector.createStatement();
 //        for (String insert : inserts) {
 //            statement.execute(insert);
