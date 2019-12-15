@@ -94,13 +94,19 @@ Aplikacja za pomocą paneli będzie miała możliwość wysyłania i odbierania 
 
 ![Image of Yaktocat](img/DiagramPrzypadkówUżycia.PNG)
 
-## Diagram aktywności
+### Diagram aktywności
+#### Kopiowanie danych
 
 ![Image of Yaktocat](img/KopiowanieDanych.PNG)
 
+#### Usuwanie tabeli
 
 ![Image of Yaktocat](img/UsuwanieTabeli.PNG)
 
+#### Importowanie pliku .csv
+
 ![Image of Yaktocat](img/ImportowaniePliku.PNG)
 
+
+### Diagram sekwencji
 ![Image of Yaktocat](img/DiagramSekwencji.PNG)
