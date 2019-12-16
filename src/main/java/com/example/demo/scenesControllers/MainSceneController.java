@@ -378,10 +378,10 @@ public class MainSceneController {
         try {
             clickHouseService.deleteTable(tableName);
         } catch (SQLException e) {
-            clearAndAppendToLogArea(LocalDateTime.now().toString() + " - błąd podczas usuwania tabeli " + tableName + " z ClickHouse\n");
+            clearAndAppendToLogArea(LocalDateTime.now().toString() + " - błąd podczas usuwania tabeli " + tableName + " z ClickHouse");
             e.printStackTrace();
         }
-        appendToLogArea(LocalDateTime.now().toString() + " - usunięto tabelę " + tableName + " z ClickHouse\n");
+        appendToLogArea(LocalDateTime.now().toString() + " - usunięto tabelę " + tableName + " z ClickHouse");
         refreshClickHouseTables();
     }
 
