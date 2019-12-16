@@ -11,6 +11,7 @@
 - [Przepływ informacji w środowisku systemu](#przepływ-informacji-w-środowisku-systemu)
 - [Diagramy UML](#diagramy-uml)
 - [Baza danych](#baza-danych)
+- [Testy](#testy)
 - [Wykorzystane technologie](#wykorzystane-technologie)
 
 
@@ -91,6 +92,9 @@ Przepływ informacji będzie odbywał się za pomocą bazy danych i serwera.
 
 Aplikacja za pomocą paneli będzie miała możliwość wysyłania i odbierania zapytań bazodanowych.
 
+___
+
+
 ## Diagramy UML
 
 ### Diagram przypadków użycia 
@@ -120,6 +124,27 @@ Plik bazy danych Firebird powinien znajdować się w lokalizacji „C:\fbDB\data
 ###	ClickHouse
 Serwer bazy ClickHouse powinien się znajdować na hoście localhost na porcie 8123. Nazwa użytkownika bazy default bez hasła. Aplikacja testowana z bazą w wersji 19.17.2. Działanie 
 z innymi wersjami niewykluczone.
+
+
+## Testy 
+### Importowanie pliku CSV
+
+Baza ClickHouse wykonuje import pliku .csv w czasie około 9 minut.
+
+![Import ClickHouse](img/import%20do%20click.png)
+
+___
+
+Baza FireBird natomiast wykonuje ten import w dużo większym czasie - w ponad 30 minut. 
+
+![Import FireBird](img/import%20do%20fire.png)
+
+### Kopiowanie 10 mln rekordów z bazy ClickHouse do bazy FireBird
+
+Czas tej operacji trwa około 45 minut.
+
+![Kopiowanie z ClickHouse do FireBird](img/kopiowanie%20z%20click.png)
+
 
 ##	Wykorzystane technologie
 - <b>Język Java 8</b>
