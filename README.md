@@ -11,7 +11,7 @@
 - [Przepływ informacji w środowisku systemu](#przepływ-informacji-w-środowisku-systemu)
 - [Diagramy UML](#diagramy-uml)
 - [Baza danych](#baza-danych)
-- [Importowanie pliku CSV](#importowanie-pliku-csv)
+- [Importowanie pliku CSV](#importowanie-pliku-csv-1)
 - [Wykorzystane technologie](#wykorzystane-technologie)
 
 
