@@ -22,7 +22,7 @@
 | Jakub Gurgacz   | Programowanie | 
 | Damian Rolewski | Dokumentacja | 
 | Tomasz Baran    | Dokumentacja |
-| Tomasz Kośmidek | Dokumentacja |
+| Tomasz Kośmidek | Dokumentacja, Zaprojektowanie interfejsu graficznego |
 
 ## Specyfikacja projektu
 
