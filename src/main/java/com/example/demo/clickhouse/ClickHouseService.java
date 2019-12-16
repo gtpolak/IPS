@@ -94,7 +94,7 @@ public class ClickHouseService {
 
         ChoiceDialog<String> dialog1 = new ChoiceDialog<>(cols.get(0), cols);
         dialog1.setTitle("Wybierz pole porządkujące");
-        dialog1.setHeaderText("Należy wybrać pole daty do porządkowania rekordów w bazie.");
+        dialog1.setHeaderText("Należy wybrać pole do porządkowania rekordów w bazie.");
         dialog1.setContentText("Wybierz pole");
 
         Optional<String> orderCol = dialog1.showAndWait();
